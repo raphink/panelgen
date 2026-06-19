@@ -48,7 +48,7 @@ brews:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://github.com/raphink/panelgen"
     description: "AI image series generator for comics and carousels"
-    license: "MIT"
+    license: "Apache-2.0"
     install: |
       bin.install "panelgen"
     test: |
