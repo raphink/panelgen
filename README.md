@@ -13,16 +13,22 @@ Single static binary. No runtime dependencies. Designed to drop cleanly into age
 
 ## Install
 
-**Binary (recommended):**
+**Homebrew (recommended):**
 ```bash
-# Download from GitHub releases
-curl -L https://github.com/raphink/panelgen/releases/latest/download/panelgen-linux-amd64 \
-  -o panelgen && chmod +x panelgen
+brew tap raphink/tap
+brew install panelgen
 ```
 
 **From source:**
 ```bash
 go install github.com/raphink/panelgen@latest
+```
+
+**Binary:**
+```bash
+# Download from GitHub releases
+curl -L https://github.com/raphink/panelgen/releases/latest/download/panelgen-linux-amd64 \
+  -o panelgen && chmod +x panelgen
 ```
 
 **Container:**
