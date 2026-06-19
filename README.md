@@ -1,5 +1,12 @@
 # panelgen
 
+[![checks](https://github.com/raphink/panelgen/actions/workflows/checks.yml/badge.svg?branch=main)](https://github.com/raphink/panelgen/actions/workflows/checks.yml)
+[![release](https://github.com/raphink/panelgen/actions/workflows/release.yml/badge.svg)](https://github.com/raphink/panelgen/actions/workflows/release.yml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/raphink/panelgen)](https://github.com/raphink/panelgen/blob/main/go.mod)
+[![Go Report Card](https://goreportcard.com/badge/github.com/raphink/panelgen)](https://goreportcard.com/report/github.com/raphink/panelgen)
+[![Go Reference](https://pkg.go.dev/badge/github.com/raphink/panelgen.svg)](https://pkg.go.dev/github.com/raphink/panelgen)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 AI image series generator. Define scenes and panels in YAML, generate consistent image series with gpt-image-2 via Azure AI Foundry.
 
 Single static binary. No runtime dependencies. Designed to drop cleanly into agentic pipelines.
