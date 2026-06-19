@@ -84,6 +84,9 @@ panelgen generate "Same character, different pose" output.png -ref previous.png
 
 # Size and quality overrides
 panelgen generate "..." output.png -size 1536x1024 -quality medium
+
+# Outpainting: expand a square image to landscape
+panelgen generate --quality low --ref square_img.jpg --size 1920x1088 'outpaint the image' landscape_img.jpg
 ```
 
 ### Batch generation
