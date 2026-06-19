@@ -12,10 +12,14 @@ import (
 	"github.com/raphink/panelgen/internal/generate"
 )
 
-var validSizes = map[string]bool{
-	"1024x1024": true,
-	"1024x1536": true,
-	"1536x1024": true,
+// isValidSize checks gpt-image-2 size constraints:
+// both dimensions divisible by 16, total pixels ≤ 8,294,400.
+func isValidSize(s string) bool {
+	var w, h int
+	if _, err := fmt.Sscanf(s, "%dx%d", &w, &h); err != nil || w <= 0 || h <= 0 {
+		return false
+	}
+	return w%16 == 0 && h%16 == 0 && w*h <= 8_294_400
 }
 
 var validQualities = map[string]bool{
@@ -100,8 +104,8 @@ OPTIONS
 	cfg, configDir := mustLoadConfig(*configFile)
 	resolvedStyle := resolveStyle(*styleFile, *noStyle, cfg, configDir)
 
-	if *size != "" && !validSizes[*size] {
-		fatalf("invalid --size %q (expected one of: 1024x1024, 1024x1536, 1536x1024)", *size)
+	if *size != "" && !isValidSize(*size) {
+		fatalf("invalid --size %q (must be WxH with both dimensions divisible by 16 and ≤8,294,400 total pixels)", *size)
 	}
 	if *quality != "" && !validQualities[*quality] {
 		fatalf("invalid --quality %q (expected one of: low, medium, high)", *quality)
@@ -225,8 +229,8 @@ func lintConfig(cfg *config.Config, configDir, styleFlag string, noStyle bool) [
 		issues = append(issues, lintIssue{level: level, msg: msg})
 	}
 
-	if cfg.Defaults.Size != "" && !validSizes[cfg.Defaults.Size] {
-		add("warning", fmt.Sprintf("defaults.size %q is non-standard", cfg.Defaults.Size))
+	if cfg.Defaults.Size != "" && !isValidSize(cfg.Defaults.Size) {
+		add("warning", fmt.Sprintf("defaults.size %q is invalid (must be WxH, both dims divisible by 16, ≤8,294,400 px)", cfg.Defaults.Size))
 	}
 	if cfg.Defaults.Quality != "" && !validQualities[cfg.Defaults.Quality] {
 		add("warning", fmt.Sprintf("defaults.quality %q is non-standard", cfg.Defaults.Quality))
@@ -265,8 +269,8 @@ func lintConfig(cfg *config.Config, configDir, styleFlag string, noStyle bool) [
 	sort.Strings(sceneNames)
 	for _, name := range sceneNames {
 		s := cfg.Scenes[name]
-		if s.Size != "" && !validSizes[s.Size] {
-			add("warning", fmt.Sprintf("scene %q size %q is non-standard", name, s.Size))
+		if s.Size != "" && !isValidSize(s.Size) {
+			add("warning", fmt.Sprintf("scene %q size %q is invalid (must be WxH, both dims divisible by 16, ≤8,294,400 px)", name, s.Size))
 		}
 		if s.Quality != "" && !validQualities[s.Quality] {
 			add("warning", fmt.Sprintf("scene %q quality %q is non-standard", name, s.Quality))

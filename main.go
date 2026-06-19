@@ -92,7 +92,7 @@ OPTIONS
 	configFile := fs.String("config", defaultConfig, "Config `FILE`")
 	styleFile := fs.String("style", "", "Style guide text `FILE`")
 	noStyle := fs.Bool("no-style", false, "Disable style guide")
-	size := fs.String("size", "", "Image size (1024x1024 | 1024x1536 | 1536x1024)")
+	size := fs.String("size", "", "Image size as WxH (both dims divisible by 16, ≤8,294,400 total px)")
 	quality := fs.String("quality", "", "Image quality (low | medium | high)")
 
 	var refs []string
@@ -166,6 +166,9 @@ OPTIONS
 
 	finalSize := firstNonEmpty(*size, sceneSize, cfg.Defaults.Size, "1024x1024")
 	finalQuality := firstNonEmpty(*quality, sceneQuality, cfg.Defaults.Quality, "high")
+	if !isValidSize(finalSize) {
+		fatalf("invalid size %q (must be WxH with both dimensions divisible by 16 and ≤8,294,400 total pixels)", finalSize)
+	}
 	allRefs := append(sceneRefs, refs...)
 
 	// Resolve style file
