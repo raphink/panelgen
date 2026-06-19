@@ -36,6 +36,10 @@ func main() {
 		cmdGenerate(os.Args[2:])
 	case "batch":
 		cmdBatch(os.Args[2:])
+	case "plan", "preview":
+		cmdPlan(os.Args[2:])
+	case "lint":
+		cmdLint(os.Args[2:])
 	case "scenes":
 		cmdScenes(os.Args[2:])
 	case "help", "--help", "-h":
@@ -53,6 +57,8 @@ func usage() {
 COMMANDS
   generate  Generate a single image
   batch     Generate all panels from a config file
+	plan      Show what batch would generate without API calls
+	lint      Validate config and local file references
   scenes    List scenes defined in a config file
 
 Run 'panelgen COMMAND --help' for command-specific options.

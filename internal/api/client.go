@@ -39,13 +39,13 @@ type Client struct {
 //
 //	AZURE_OPENAI_ENDPOINT   https://your-resource.openai.azure.com
 //	AZURE_OPENAI_API_KEY    your-key
-//	AZURE_OPENAI_DEPLOYMENT deployment name (default: gpt-image-1)
+//	AZURE_OPENAI_DEPLOYMENT deployment name (default: gpt-image-2)
 //
 // Standard OpenAI is used when OPENAI_API_KEY is set:
 //
 //	OPENAI_API_KEY   your-key
 //	OPENAI_BASE_URL  base URL (default: https://api.openai.com)
-//	OPENAI_MODEL     model name (default: gpt-image-1)
+//	OPENAI_MODEL     model name (default: gpt-image-2)
 func NewClientFromEnv() (*Client, error) {
 	if azureEndpoint := os.Getenv("AZURE_OPENAI_ENDPOINT"); azureEndpoint != "" {
 		apiKey := os.Getenv("AZURE_OPENAI_API_KEY")

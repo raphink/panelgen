@@ -312,7 +312,6 @@ func (p *parser) parsePanels() []Panel {
 		}
 		// Panel starts with "  - page:"
 		if strings.HasPrefix(strings.TrimSpace(line), "- ") || strings.TrimSpace(line) == "-" {
-			p.pos++
 			panel := p.parsePanel()
 			if panel.Page > 0 {
 				panels = append(panels, panel)
@@ -326,14 +325,58 @@ func (p *parser) parsePanels() []Panel {
 
 func (p *parser) parsePanel() Panel {
 	panel := Panel{}
+	started := false
 	for p.pos < len(p.lines) {
 		line := p.lines[p.pos]
 		trimmed := strings.TrimSpace(line)
 		ind := indent(line)
+
+		// Panel header line, e.g. "- page: 1" or "-"
+		if ind == 2 && strings.HasPrefix(trimmed, "- ") {
+			if started {
+				break
+			}
+			started = true
+			rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
+			if rest == "" {
+				p.pos++
+				continue
+			}
+			idx := strings.Index(rest, ":")
+			if idx < 0 {
+				p.pos++
+				continue
+			}
+			key := strings.TrimSpace(rest[:idx])
+			val := strings.TrimSpace(rest[idx+1:])
+			switch key {
+			case "page":
+				fmt.Sscanf(val, "%d", &panel.Page)
+			case "scene":
+				panel.Scene = val
+			case "prompt":
+				panel.Prompt = p.parseScalarOrBlock(val, 2)
+				continue
+			case "refs":
+				p.pos++
+				panel.Refs = p.parseStringList(4)
+				continue
+			}
+			p.pos++
+			continue
+		}
+
 		// Next panel or top-level key
-		if (ind == 2 && strings.HasPrefix(trimmed, "- ")) || (ind == 0 && trimmed != "" && !strings.HasPrefix(trimmed, "#")) {
+		if (started && ind == 2 && strings.HasPrefix(trimmed, "- ")) ||
+			(ind == 0 && trimmed != "" && !strings.HasPrefix(trimmed, "#")) {
 			break
 		}
+
+		if !started {
+			p.pos++
+			continue
+		}
+
 		key, val, ok := kvAt(line, 4)
 		if !ok {
 			p.pos++

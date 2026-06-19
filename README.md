@@ -98,6 +98,26 @@ panelgen batch -parallel 4
 panelgen batch -quality high
 ```
 
+### Lint config
+
+```bash
+# Validate config structure and local file references
+panelgen lint --config panelgen.yml
+
+# Fail on warnings too
+panelgen lint --config panelgen.yml --strict
+```
+
+### Plan / preview
+
+```bash
+# Preview what would be generated without calling the image API
+panelgen plan --config panelgen.yml
+
+# Include fully-resolved prompt text and all refs
+panelgen plan --config panelgen.yml --show-prompt --show-refs
+```
+
 ### List scenes
 
 ```bash
@@ -112,6 +132,9 @@ panelgen scenes -config comic.yml
 cp examples/panelgen.yml ./panelgen.yml
 cp examples/style.txt ./style.txt
 
+# Advanced flow examples (panel-to-panel continuity, panel-specific refs)
+cp examples/panelgen-advanced.yml ./panelgen-advanced.yml
+
 # Optional: add your reference images
 mkdir -p refs
 # cp /path/to/your/reference.png refs/clockwork-fox.png
@@ -119,6 +142,10 @@ mkdir -p refs
 # Generate panels
 panelgen batch --config panelgen.yml
 ```
+
+`examples/panelgen-advanced.yml` demonstrates:
+- using one panel output as a ref for a later panel to preserve continuity
+- adding a panel-specific character via panel-level refs without changing scene defaults
 
 ## Config format
 
@@ -132,7 +159,7 @@ defaults:
 output_dir: generated/
 
 characters:
-  astronaut:
+  explorer:
     description: "Clockwork fox explorer — white space suit, glass helmet"
     refs:
       - characters/clockwork-fox.png
@@ -144,7 +171,7 @@ scenes:
       Comic panel in outer space with purple/blue starry background.
       Square panel with rounded corners.
     characters:
-      - astronaut
+      - explorer
     size: 1024x1024
 
 panels:

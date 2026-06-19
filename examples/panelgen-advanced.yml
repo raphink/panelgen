@@ -1,0 +1,50 @@
+style: style.txt
+
+defaults:
+  size: 1024x1024
+  quality: high
+
+output_dir: generated
+
+characters:
+  explorer:
+    description: "Clockwork fox explorer in white spacesuit"
+    refs:
+      - refs/clockwork-fox.png
+
+  sidekick:
+    description: "Small helper robot with a single blue lens"
+    refs:
+      - refs/robot-sidekick.png
+
+scenes:
+  bridge:
+    description: "Inside a spacecraft bridge"
+    prompt_prefix: >
+      Comic panel aboard a spacecraft bridge, cinematic framing, clear
+      silhouettes, consistent visual identity.
+    characters:
+      - explorer
+    size: 1024x1024
+
+panels:
+  - page: 1
+    scene: bridge
+    prompt: >
+      Explorer at the command console, focused and calm, medium shot.
+
+  - page: 2
+    scene: bridge
+    refs:
+      - generated/page_1_high-1.png
+    prompt: >
+      Explorer in the same position moments later, alarm lights now active.
+      Keep pose and framing consistent with previous panel.
+
+  - page: 3
+    scene: bridge
+    refs:
+      - refs/robot-sidekick.png
+    prompt: >
+      Same bridge scene and explorer, but the sidekick robot enters frame.
+      Keep explorer design consistent and place robot in the foreground.
