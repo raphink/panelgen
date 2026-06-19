@@ -1,0 +1,12 @@
+# Build outputs
+panelgen
+dist/
+build/
+
+# Generated content
+generated/
+
+# Editor/OS noise
+*.swp
+*.swo
+.DS_Store

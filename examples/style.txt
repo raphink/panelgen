@@ -1,0 +1,13 @@
+Create cohesive comic-style panels with consistent character identity.
+
+Style rules:
+- Keep the clockwork fox design consistent across panels.
+- Prioritize clear silhouettes and readable composition.
+- Use cinematic lighting with strong value contrast.
+- Keep backgrounds detailed enough for context but not distracting.
+- Avoid adding logos, watermarks, signatures, or UI overlays.
+
+Output goals:
+- Story continuity between panels.
+- Clean subject framing.
+- Strong visual storytelling.
