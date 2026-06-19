@@ -44,7 +44,7 @@ brews:
   - name: panelgen
     repository:
       owner: raphink
-      name: homebrew-panelgen
+      name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://github.com/raphink/panelgen"
     description: "AI image series generator for comics and carousels"
