@@ -40,6 +40,20 @@ changelog:
       - "^test:"
       - "^chore:"
 
+brews:
+  - name: panelgen
+    repository:
+      owner: raphink
+      name: homebrew-panelgen
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: "https://github.com/raphink/panelgen"
+    description: "AI image series generator for comics and carousels"
+    license: "MIT"
+    install: |
+      bin.install "panelgen"
+    test: |
+      system "#{bin}/panelgen", "version"
+
 release:
   draft: false
   prerelease: auto
