@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"os"
 	"path/filepath"
 	"strings"
@@ -214,7 +215,11 @@ func (c *Client) doEdit(url, prompt string, refs []string, size, quality string)
 		if err != nil {
 			return nil, fmt.Errorf("open reference %s: %w", ref, err)
 		}
-		part, err := w.CreateFormFile("image[]", filepath.Base(ref))
+		mimeType := mimeFromExt(filepath.Ext(ref))
+		h := make(textproto.MIMEHeader)
+		h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image[]"; filename="%s"`, filepath.Base(ref)))
+		h.Set("Content-Type", mimeType)
+		part, err := w.CreatePart(h)
 		if err != nil {
 			f.Close()
 			return nil, err
@@ -296,4 +301,15 @@ func (c *Client) doJSON(url string, body []byte) ([]byte, error) {
 	}
 
 	return base64.StdEncoding.DecodeString(imgResp.Data[0].B64JSON)
+}
+
+func mimeFromExt(ext string) string {
+	switch strings.ToLower(ext) {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	default:
+		return "image/png"
+	}
 }
