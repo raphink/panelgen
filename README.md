@@ -235,6 +235,7 @@ Releases are automated with GoReleaser.
 ```bash
 make release-check     # validate .goreleaser.yml
 make release-snapshot  # local artifacts in dist/ (no GitHub publish)
+make release           # publish release from local machine (requires GITHUB_TOKEN)
 ```
 
 Push a version tag to publish a GitHub release via Actions:

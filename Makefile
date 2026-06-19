@@ -1,8 +1,8 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  = -ldflags="-s -w -X main.version=$(VERSION)"
-IMAGE   ?= panelgen
+IMAGE   ?= raphink/panelgen
 
-.PHONY: build build-all docker release-check release-snapshot clean
+.PHONY: build build-all docker release-check release-snapshot release clean
 
 ## build: build for the current platform
 build:
@@ -30,6 +30,14 @@ release-check:
 ## release-snapshot: build release artifacts locally (no publish)
 release-snapshot:
 	goreleaser release --snapshot --clean
+
+## release: publish a release with GoReleaser (requires GITHUB_TOKEN)
+release:
+	@if [ -z "$(GITHUB_TOKEN)" ]; then \
+		echo "GITHUB_TOKEN is required for make release"; \
+		exit 1; \
+	fi
+	goreleaser release --clean
 
 ## clean: remove build artifacts
 clean:
