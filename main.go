@@ -42,6 +42,8 @@ func main() {
 		cmdLint(os.Args[2:])
 	case "scenes":
 		cmdScenes(os.Args[2:])
+	case "assemble":
+		cmdAssemble(os.Args[2:])
 	case "help", "--help", "-h":
 		usage()
 	case "version", "--version", "-V":
@@ -62,6 +64,7 @@ COMMANDS
   plan      Show what batch would generate without API calls
   lint      Validate config and local file references
   scenes    List scenes defined in a config file
+  assemble  Assemble generated images into a PDF
 
 Run 'panelgen COMMAND --help' for command-specific options.
 `)

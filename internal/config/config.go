@@ -38,10 +38,11 @@ type Scene struct {
 }
 
 type Panel struct {
-	Page   int      `yaml:"page"`
-	Scene  string   `yaml:"scene"`
-	Prompt string   `yaml:"prompt"`
-	Refs   []string `yaml:"refs"`
+	Page     int      `yaml:"page"`
+	Scene    string   `yaml:"scene"`
+	Prompt   string   `yaml:"prompt"`
+	Refs     []string `yaml:"refs"`
+	Selected string   `yaml:"selected"`
 }
 
 // Load reads a panelgen YAML config file.
