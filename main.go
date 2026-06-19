@@ -44,6 +44,8 @@ func main() {
 		cmdScenes(os.Args[2:])
 	case "help", "--help", "-h":
 		usage()
+	case "version", "--version", "-V":
+		fmt.Println("panelgen", version)
 	default:
 		fmt.Fprintf(os.Stderr, "panelgen: unknown command %q\n\n", os.Args[1])
 		usage()
@@ -57,8 +59,8 @@ func usage() {
 COMMANDS
   generate  Generate a single image
   batch     Generate all panels from a config file
-	plan      Show what batch would generate without API calls
-	lint      Validate config and local file references
+  plan      Show what batch would generate without API calls
+  lint      Validate config and local file references
   scenes    List scenes defined in a config file
 
 Run 'panelgen COMMAND --help' for command-specific options.
