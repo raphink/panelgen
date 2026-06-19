@@ -5,7 +5,7 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/raphink/panelgen)](https://github.com/raphink/panelgen/blob/main/go.mod)
 [![Go Report Card](https://goreportcard.com/badge/github.com/raphink/panelgen)](https://goreportcard.com/report/github.com/raphink/panelgen)
 [![Go Reference](https://pkg.go.dev/badge/github.com/raphink/panelgen.svg)](https://pkg.go.dev/github.com/raphink/panelgen)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 AI image series generator. Define scenes and panels in YAML, generate consistent image series with gpt-image-2 via Azure AI Foundry.
 
@@ -255,4 +255,4 @@ git push origin v0.1.0
 
 ## License
 
-MIT
+Apache 2.0
