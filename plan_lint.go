@@ -236,15 +236,13 @@ func lintConfig(cfg *config.Config, configDir, styleFlag string, noStyle bool) [
 		stylePath := styleFlag
 		if stylePath == "" {
 			stylePath = cfg.Style
-			if stylePath == "" {
-				stylePath = defaultStyle
+		} else {
+			if !filepath.IsAbs(stylePath) {
+				stylePath = filepath.Join(configDir, stylePath)
 			}
-		}
-		if !filepath.IsAbs(stylePath) {
-			stylePath = filepath.Join(configDir, stylePath)
-		}
-		if _, err := os.Stat(stylePath); err != nil {
-			add("warning", fmt.Sprintf("style file not found: %s", stylePath))
+			if _, err := os.Stat(stylePath); err != nil {
+				add("warning", fmt.Sprintf("style file not found: %s", stylePath))
+			}
 		}
 	}
 

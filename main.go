@@ -21,7 +21,6 @@ import (
 )
 
 const defaultConfig = "panelgen.yml"
-const defaultStyle = "style.txt"
 
 var version = "dev"
 
@@ -327,7 +326,7 @@ func resolveStyle(flagVal string, noStyle bool, cfg *config.Config, configDir st
 	}
 	candidate := cfg.Style
 	if candidate == "" {
-		candidate = defaultStyle
+		return ""
 	}
 	if !filepath.IsAbs(candidate) {
 		candidate = filepath.Join(configDir, candidate)
