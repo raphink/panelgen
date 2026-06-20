@@ -182,61 +182,16 @@ func (c *Client) Edit(prompt string, refs []string, size, quality string) ([]byt
 }
 
 func (c *Client) doEdit(url, prompt string, refs []string, size, quality string) ([]byte, error) {
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-
-	// Prompt field
-	if err := w.WriteField("prompt", prompt); err != nil {
-		return nil, err
-	}
-	if err := w.WriteField("n", "1"); err != nil {
-		return nil, err
-	}
-	if err := w.WriteField("size", size); err != nil {
-		return nil, err
-	}
-	if err := w.WriteField("quality", quality); err != nil {
-		return nil, err
-	}
-	if err := w.WriteField("output_format", "png"); err != nil {
-		return nil, err
-	}
-
-	// Model field for standard OpenAI
-	if c.Provider == ProviderOpenAI {
-		if err := w.WriteField("model", c.Deployment); err != nil {
-			return nil, err
-		}
-	}
-
-	// Reference images
-	for _, ref := range refs {
-		f, err := os.Open(ref)
-		if err != nil {
-			return nil, fmt.Errorf("open reference %s: %w", ref, err)
-		}
-		mimeType := mimeFromExt(filepath.Ext(ref))
-		h := make(textproto.MIMEHeader)
-		h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image[]"; filename="%s"`, filepath.Base(ref)))
-		h.Set("Content-Type", mimeType)
-		part, err := w.CreatePart(h)
-		if err != nil {
-			f.Close()
-			return nil, err
-		}
-		if _, err := io.Copy(part, f); err != nil {
-			f.Close()
-			return nil, err
-		}
-		f.Close()
-	}
-	w.Close()
-
-	req, err := http.NewRequest("POST", url, &buf)
+	buf, contentType, err := c.buildEditForm(prompt, refs, size, quality)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	req, err := http.NewRequest("POST", url, buf)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
 	c.setAuth(req)
 
 	resp, err := c.HTTPClient.Do(req)
@@ -252,19 +207,47 @@ func (c *Client) doEdit(url, prompt string, refs []string, size, quality string)
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("%d: %s", resp.StatusCode, string(respBody))
 	}
+	return parseImageResponse(respBody)
+}
 
-	var imgResp ImageResponse
-	if err := json.Unmarshal(respBody, &imgResp); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+func (c *Client) buildEditForm(prompt string, refs []string, size, quality string) (*bytes.Buffer, string, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+
+	for _, field := range [][2]string{
+		{"prompt", prompt}, {"n", "1"}, {"size", size}, {"quality", quality}, {"output_format", "png"},
+	} {
+		if err := w.WriteField(field[0], field[1]); err != nil {
+			return nil, "", err
+		}
 	}
-	if imgResp.Error != nil {
-		return nil, fmt.Errorf("API error %s: %s", imgResp.Error.Code, imgResp.Error.Message)
-	}
-	if len(imgResp.Data) == 0 {
-		return nil, fmt.Errorf("no images in response")
+	if c.Provider == ProviderOpenAI {
+		if err := w.WriteField("model", c.Deployment); err != nil {
+			return nil, "", err
+		}
 	}
 
-	return base64.StdEncoding.DecodeString(imgResp.Data[0].B64JSON)
+	for _, ref := range refs {
+		f, err := os.Open(ref)
+		if err != nil {
+			return nil, "", fmt.Errorf("open reference %s: %w", ref, err)
+		}
+		h := make(textproto.MIMEHeader)
+		h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image[]"; filename="%s"`, filepath.Base(ref)))
+		h.Set("Content-Type", mimeFromExt(filepath.Ext(ref)))
+		part, err := w.CreatePart(h)
+		if err != nil {
+			f.Close()
+			return nil, "", err
+		}
+		_, copyErr := io.Copy(part, f)
+		f.Close()
+		if copyErr != nil {
+			return nil, "", copyErr
+		}
+	}
+	w.Close()
+	return &buf, w.FormDataContentType(), nil
 }
 
 func (c *Client) doJSON(url string, body []byte) ([]byte, error) {
@@ -288,9 +271,12 @@ func (c *Client) doJSON(url string, body []byte) ([]byte, error) {
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("%d: %s", resp.StatusCode, string(respBody))
 	}
+	return parseImageResponse(respBody)
+}
 
+func parseImageResponse(body []byte) ([]byte, error) {
 	var imgResp ImageResponse
-	if err := json.Unmarshal(respBody, &imgResp); err != nil {
+	if err := json.Unmarshal(body, &imgResp); err != nil {
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
 	if imgResp.Error != nil {
@@ -299,7 +285,6 @@ func (c *Client) doJSON(url string, body []byte) ([]byte, error) {
 	if len(imgResp.Data) == 0 {
 		return nil, fmt.Errorf("no images in response")
 	}
-
 	return base64.StdEncoding.DecodeString(imgResp.Data[0].B64JSON)
 }
 

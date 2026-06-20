@@ -111,25 +111,7 @@ OPTIONS
 		fatalf("invalid --quality %q (expected one of: low, medium, high)", *quality)
 	}
 
-	panels := cfg.Panels
-	if len(*pages) > 0 {
-		pageList, err := parsePageSpec(*pages)
-		if err != nil {
-			fatalf("parse --pages: %v", err)
-		}
-		pageSet := make(map[int]bool, len(pageList))
-		for _, p := range pageList {
-			pageSet[p] = true
-		}
-		filtered := panels[:0]
-		for _, p := range panels {
-			if pageSet[p.Page] {
-				filtered = append(filtered, p)
-			}
-		}
-		panels = filtered
-	}
-
+	panels := filterPanelsByPage(cfg.Panels, *pages)
 	if len(panels) == 0 {
 		fatalf("no panels to plan")
 	}
@@ -138,83 +120,12 @@ OPTIONS
 	_ = os.MkdirAll(outputDir, 0755)
 
 	total := len(panels)
-	planned := 0
-	skipped := 0
-	invalid := 0
+	planned, skipped, invalid := 0, 0, 0
 
 	for i, panel := range panels {
 		idx := i + 1
-		prompt := strings.TrimSpace(panel.Prompt)
-		if prompt == "" || panel.Scene == "blank" {
-			fmt.Fprintf(os.Stdout, "[%d/%d] page=%d scene=%s status=skip (blank)\n", idx, total, panel.Page, panel.Scene)
-			skipped++
-			continue
-		}
-
-		prefix := ""
-		var sceneRefs []string
-		sceneSize := ""
-		sceneQuality := ""
-		if panel.Scene != "" {
-			resolved, err := generate.ResolveScene(cfg, panel.Scene, configDir)
-			if err != nil {
-				fmt.Fprintf(os.Stdout, "[%d/%d] page=%d scene=%s status=invalid (%v)\n", idx, total, panel.Page, panel.Scene, err)
-				invalid++
-				continue
-			}
-			prefix = resolved.Prefix
-			sceneRefs = resolved.Refs
-			sceneSize = resolved.Size
-			sceneQuality = resolved.Quality
-		}
-
-		finalSize := firstNonEmpty(*size, sceneSize, cfg.Defaults.Size, "1024x1024")
-		finalQuality := firstNonEmpty(*quality, sceneQuality, cfg.Defaults.Quality, "high")
-
-		var panelRefs []string
-		for _, r := range panel.Refs {
-			path := r
-			if !filepath.IsAbs(path) {
-				path = filepath.Join(configDir, r)
-			}
-			panelRefs = append(panelRefs, path)
-		}
-		allRefs := append(sceneRefs, panelRefs...)
-
-		if !*force && generate.HasVersion(outputDir, panel.Page, finalQuality) {
-			fmt.Fprintf(os.Stdout, "[%d/%d] page=%d scene=%s status=skip (%s exists)\n", idx, total, panel.Page, panel.Scene, finalQuality)
-			skipped++
-			continue
-		}
-
-		output := generate.NextVersion(outputDir, panel.Page, finalQuality)
-		fullPrompt, err := generate.BuildPrompt(prompt, resolvedStyle, prefix)
-		if err != nil {
-			fmt.Fprintf(os.Stdout, "[%d/%d] page=%d scene=%s status=invalid (%v)\n", idx, total, panel.Page, panel.Scene, err)
-			invalid++
-			continue
-		}
-
-		fmt.Fprintf(os.Stdout, "[%d/%d] page=%d scene=%s status=plan\n", idx, total, panel.Page, panel.Scene)
-		fmt.Fprintf(os.Stdout, "  output : %s\n", output)
-		fmt.Fprintf(os.Stdout, "  size   : %s\n", finalSize)
-		fmt.Fprintf(os.Stdout, "  quality: %s\n", finalQuality)
-		fmt.Fprintf(os.Stdout, "  refs   : %d\n", len(allRefs))
-
-		if *showRefs && len(allRefs) > 0 {
-			for _, r := range allRefs {
-				fmt.Fprintf(os.Stdout, "    - %s\n", r)
-			}
-		}
-
-		if *showPrompt {
-			fmt.Fprintln(os.Stdout, "  prompt:")
-			for _, line := range strings.Split(fullPrompt, "\n") {
-				fmt.Fprintf(os.Stdout, "    %s\n", line)
-			}
-		}
-
-		planned++
+		result := planOnePanel(panel, cfg, configDir, outputDir, *size, *quality, resolvedStyle, *force)
+		planned, skipped, invalid = printPlanResult(result, panel, idx, total, *showRefs, *showPrompt, planned, skipped, invalid)
 	}
 
 	fmt.Fprintf(os.Stdout, "\nPlan summary: %d planned, %d skipped, %d invalid (of %d)\n", planned, skipped, invalid, total)
@@ -223,45 +134,167 @@ OPTIONS
 	}
 }
 
+func filterPanelsByPage(panels []config.Panel, pagesFlag string) []config.Panel {
+	if pagesFlag == "" {
+		return panels
+	}
+	pageList, err := parsePageSpec(pagesFlag)
+	if err != nil {
+		fatalf("parse --pages: %v", err)
+	}
+	pageSet := make(map[int]bool, len(pageList))
+	for _, p := range pageList {
+		pageSet[p] = true
+	}
+	filtered := panels[:0]
+	for _, p := range panels {
+		if pageSet[p.Page] {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered
+}
+
+func printPlanResult(result panelPlanResult, panel config.Panel, idx, total int, showRefs, showPrompt bool, planned, skipped, invalid int) (int, int, int) {
+	switch result.status {
+	case "skip":
+		fmt.Fprintf(os.Stdout, "[%d/%d] page=%d scene=%s status=skip (%s)\n", idx, total, panel.Page, panel.Scene, result.reason)
+		skipped++
+	case "invalid":
+		fmt.Fprintf(os.Stdout, "[%d/%d] page=%d scene=%s status=invalid (%v)\n", idx, total, panel.Page, panel.Scene, result.err)
+		invalid++
+	case "plan":
+		fmt.Fprintf(os.Stdout, "[%d/%d] page=%d scene=%s status=plan\n", idx, total, panel.Page, panel.Scene)
+		fmt.Fprintf(os.Stdout, "  output : %s\n  size   : %s\n  quality: %s\n  refs   : %d\n",
+			result.output, result.size, result.quality, len(result.refs))
+		if showRefs {
+			for _, r := range result.refs {
+				fmt.Fprintf(os.Stdout, "    - %s\n", r)
+			}
+		}
+		if showPrompt {
+			fmt.Fprintln(os.Stdout, "  prompt:")
+			for _, line := range strings.Split(result.prompt, "\n") {
+				fmt.Fprintf(os.Stdout, "    %s\n", line)
+			}
+		}
+		planned++
+	}
+	return planned, skipped, invalid
+}
+
+type panelPlanResult struct {
+	status  string
+	reason  string
+	err     error
+	output  string
+	size    string
+	quality string
+	refs    []string
+	prompt  string
+}
+
+func planOnePanel(panel config.Panel, cfg *config.Config, configDir, outputDir, size, quality, styleFile string, force bool) panelPlanResult {
+	prompt := strings.TrimSpace(panel.Prompt)
+	if prompt == "" || panel.Scene == "blank" {
+		return panelPlanResult{status: "skip", reason: "blank"}
+	}
+
+	prefix := ""
+	var sceneRefs []string
+	sceneSize, sceneQuality := "", ""
+	if panel.Scene != "" {
+		resolved, err := generate.ResolveScene(cfg, panel.Scene, configDir)
+		if err != nil {
+			return panelPlanResult{status: "invalid", err: err}
+		}
+		prefix = resolved.Prefix
+		sceneRefs = resolved.Refs
+		sceneSize = resolved.Size
+		sceneQuality = resolved.Quality
+	}
+
+	finalSize := firstNonEmpty(size, sceneSize, cfg.Defaults.Size, "1024x1024")
+	finalQuality := firstNonEmpty(quality, sceneQuality, cfg.Defaults.Quality, "high")
+
+	var panelRefs []string
+	for _, r := range panel.Refs {
+		path := r
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(configDir, r)
+		}
+		panelRefs = append(panelRefs, path)
+	}
+	allRefs := append(sceneRefs, panelRefs...)
+
+	if !force && generate.HasVersion(outputDir, panel.Page, finalQuality) {
+		return panelPlanResult{status: "skip", reason: finalQuality + " exists"}
+	}
+
+	output := generate.NextVersion(outputDir, panel.Page, finalQuality)
+	fullPrompt, err := generate.BuildPrompt(prompt, styleFile, prefix)
+	if err != nil {
+		return panelPlanResult{status: "invalid", err: err}
+	}
+
+	return panelPlanResult{
+		status:  "plan",
+		output:  output,
+		size:    finalSize,
+		quality: finalQuality,
+		refs:    allRefs,
+		prompt:  fullPrompt,
+	}
+}
+
 func lintConfig(cfg *config.Config, configDir, styleFlag string, noStyle bool) []lintIssue {
 	var issues []lintIssue
 	add := func(level, msg string) {
 		issues = append(issues, lintIssue{level: level, msg: msg})
 	}
+	lintDefaults(cfg, add)
+	lintStyle(cfg, configDir, styleFlag, noStyle, add)
+	lintCharacters(cfg, configDir, add)
+	lintScenes(cfg, configDir, add)
+	lintPanels(cfg, configDir, add)
+	return issues
+}
 
+func lintDefaults(cfg *config.Config, add func(string, string)) {
 	if cfg.Defaults.Size != "" && !isValidSize(cfg.Defaults.Size) {
 		add("warning", fmt.Sprintf("defaults.size %q is invalid (must be WxH, both dims divisible by 16, ≤8,294,400 px)", cfg.Defaults.Size))
 	}
 	if cfg.Defaults.Quality != "" && !validQualities[cfg.Defaults.Quality] {
 		add("warning", fmt.Sprintf("defaults.quality %q is non-standard", cfg.Defaults.Quality))
 	}
+}
 
-	if !noStyle {
-		stylePath := styleFlag
-		if stylePath == "" {
-			stylePath = cfg.Style
-		} else {
-			if !filepath.IsAbs(stylePath) {
-				stylePath = filepath.Join(configDir, stylePath)
-			}
-			if _, err := os.Stat(stylePath); err != nil {
-				add("warning", fmt.Sprintf("style file not found: %s", stylePath))
-			}
-		}
+func lintStyle(cfg *config.Config, configDir, styleFlag string, noStyle bool, add func(string, string)) {
+	if noStyle {
+		return
 	}
+	stylePath := styleFlag
+	if stylePath == "" {
+		stylePath = cfg.Style
+	}
+	if stylePath == "" {
+		return
+	}
+	if !filepath.IsAbs(stylePath) {
+		stylePath = filepath.Join(configDir, stylePath)
+	}
+	if _, err := os.Stat(stylePath); err != nil {
+		add("warning", fmt.Sprintf("style file not found: %s", stylePath))
+	}
+}
 
+func lintCharacters(cfg *config.Config, configDir string, add func(string, string)) {
 	for name, c := range cfg.Characters {
-		for _, r := range c.Refs {
-			path := r
-			if !filepath.IsAbs(path) {
-				path = filepath.Join(configDir, path)
-			}
-			if _, err := os.Stat(path); err != nil {
-				add("warning", fmt.Sprintf("character %q ref not found: %s", name, path))
-			}
-		}
+		lintRefs(c.Refs, configDir, fmt.Sprintf("character %q", name), add)
 	}
+}
 
+func lintScenes(cfg *config.Config, configDir string, add func(string, string)) {
 	sceneNames := make([]string, 0, len(cfg.Scenes))
 	for name := range cfg.Scenes {
 		sceneNames = append(sceneNames, name)
@@ -280,19 +313,14 @@ func lintConfig(cfg *config.Config, configDir, styleFlag string, noStyle bool) [
 				add("error", fmt.Sprintf("scene %q references unknown character %q", name, charName))
 			}
 		}
-		for _, r := range s.Refs {
-			path := r
-			if !filepath.IsAbs(path) {
-				path = filepath.Join(configDir, path)
-			}
-			if _, err := os.Stat(path); err != nil {
-				add("warning", fmt.Sprintf("scene %q ref not found: %s", name, path))
-			}
-		}
+		lintRefs(s.Refs, configDir, fmt.Sprintf("scene %q", name), add)
 	}
+}
 
+func lintPanels(cfg *config.Config, configDir string, add func(string, string)) {
 	if len(cfg.Panels) == 0 {
 		add("error", "no panels defined")
+		return
 	}
 	for i, p := range cfg.Panels {
 		if p.Page <= 0 {
@@ -306,18 +334,20 @@ func lintConfig(cfg *config.Config, configDir, styleFlag string, noStyle bool) [
 		if strings.TrimSpace(p.Prompt) == "" && p.Scene != "blank" {
 			add("warning", fmt.Sprintf("panel[%d] has empty prompt", i))
 		}
-		for _, r := range p.Refs {
-			path := r
-			if !filepath.IsAbs(path) {
-				path = filepath.Join(configDir, path)
-			}
-			if _, err := os.Stat(path); err != nil {
-				add("warning", fmt.Sprintf("panel[%d] ref not found: %s", i, path))
-			}
+		lintRefs(p.Refs, configDir, fmt.Sprintf("panel[%d]", i), add)
+	}
+}
+
+func lintRefs(refs []string, configDir, label string, add func(string, string)) {
+	for _, r := range refs {
+		path := r
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(configDir, path)
+		}
+		if _, err := os.Stat(path); err != nil {
+			add("warning", fmt.Sprintf("%s ref not found: %s", label, path))
 		}
 	}
-
-	return issues
 }
 
 func mustLoadConfig(configFile string) (*config.Config, string) {

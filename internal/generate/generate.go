@@ -202,19 +202,8 @@ func Batch(client *api.Client, opts BatchOptions) error {
 		return fmt.Errorf("no panels defined in config")
 	}
 
-	// Filter by page list
 	if len(opts.Pages) > 0 {
-		pageSet := make(map[int]bool, len(opts.Pages))
-		for _, p := range opts.Pages {
-			pageSet[p] = true
-		}
-		filtered := panels[:0]
-		for _, p := range panels {
-			if pageSet[p.Page] {
-				filtered = append(filtered, p)
-			}
-		}
-		panels = filtered
+		panels = filterByPageSet(panels, opts.Pages)
 		if len(panels) == 0 {
 			return fmt.Errorf("no panels match the requested page list")
 		}
@@ -225,6 +214,94 @@ func Batch(client *api.Client, opts BatchOptions) error {
 		return fmt.Errorf("create output dir: %w", err)
 	}
 
+	total := len(panels)
+	work, skipped := buildWorkList(panels, cfg, opts, outputDir)
+
+	if opts.DryRun {
+		fmt.Fprintf(os.Stderr, "\nDry run: %d would be generated, %d skipped (of %d)\n",
+			len(work), skipped, total)
+		return nil
+	}
+	if len(work) == 0 {
+		fmt.Fprintf(os.Stderr, "\nDone: 0 generated, %d skipped, 0 failed (of %d)\n", skipped, total)
+		return nil
+	}
+
+	parallel := opts.Parallel
+	if parallel < 1 {
+		parallel = 1
+	}
+
+	generated, failed := runWorkList(client, work, opts.StyleFile, parallel)
+
+	fmt.Fprintf(os.Stderr, "\nDone: %d generated, %d skipped, %d failed (of %d panels)\n",
+		generated, skipped, failed, total)
+
+	if failed > 0 {
+		return fmt.Errorf("%d panel(s) failed", failed)
+	}
+	return nil
+}
+
+func generateOne(client *api.Client, item workItem, styleFile string) error {
+	fullPrompt, err := BuildPrompt(item.prompt, styleFile, item.prefix)
+	if err != nil {
+		return err
+	}
+	var imgData []byte
+	if len(item.refs) > 0 {
+		imgData, err = client.Edit(fullPrompt, item.refs, item.size, item.quality)
+	} else {
+		imgData, err = client.Generate(fullPrompt, item.size, item.quality)
+	}
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(item.output, imgData, 0644)
+}
+
+func runWorkList(client *api.Client, work []workItem, styleFile string, parallel int) (generated, failed int) {
+	var mu sync.Mutex
+
+	runOne := func(item workItem) {
+		fmt.Fprintf(os.Stderr, "[%d/%d] Page %d (%s): generating...\n",
+			item.index, item.total, item.pageNum, item.scene)
+		if err := generateOne(client, item, styleFile); err != nil {
+			mu.Lock()
+			fmt.Fprintf(os.Stderr, "  Page %d FAILED: %v\n", item.pageNum, err)
+			failed++
+			mu.Unlock()
+			return
+		}
+		mu.Lock()
+		fmt.Fprintf(os.Stderr, "  Saved: %s\n", item.output)
+		generated++
+		mu.Unlock()
+	}
+
+	if parallel <= 1 {
+		for _, item := range work {
+			runOne(item)
+		}
+		return
+	}
+	sem := make(chan struct{}, parallel)
+	var wg sync.WaitGroup
+	for _, item := range work {
+		item := item
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			runOne(item)
+		}()
+	}
+	wg.Wait()
+	return
+}
+
+func buildWorkList(panels []config.Panel, cfg *config.Config, opts BatchOptions, outputDir string) ([]workItem, int) {
 	total := len(panels)
 	skipped := 0
 	var work []workItem
@@ -238,42 +315,15 @@ func Batch(client *api.Client, opts BatchOptions) error {
 			continue
 		}
 
-		// Resolve scene
-		prefix := ""
-		var sceneRefs []string
-		sceneSize := ""
-		sceneQuality := ""
-
-		if panel.Scene != "" {
-			resolved, err := ResolveScene(cfg, panel.Scene, opts.ConfigDir)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "[%d/%d] Page %d: %v — skipping\n", idx, total, panel.Page, err)
-				skipped++
-				continue
-			}
-			prefix = resolved.Prefix
-			sceneRefs = resolved.Refs
-			sceneSize = resolved.Size
-			sceneQuality = resolved.Quality
+		prefix, sceneRefs, sceneSize, sceneQuality, skip := resolvePanel(cfg, opts, panel, idx, total)
+		if skip {
+			skipped++
+			continue
 		}
 
-		size := opts.Size
-		if size == "" {
-			size = sceneSize
-		}
-		if size == "" {
-			size = cfg.Defaults.Size
-		}
+		size := firstNonEmpty(opts.Size, sceneSize, cfg.Defaults.Size)
+		quality := firstNonEmpty(opts.Quality, sceneQuality, cfg.Defaults.Quality)
 
-		quality := opts.Quality
-		if quality == "" {
-			quality = sceneQuality
-		}
-		if quality == "" {
-			quality = cfg.Defaults.Quality
-		}
-
-		// Panel-level refs appended after scene refs
 		var panelRefs []string
 		for _, r := range panel.Refs {
 			path := r
@@ -284,7 +334,6 @@ func Batch(client *api.Client, opts BatchOptions) error {
 		}
 		allRefs := append(sceneRefs, panelRefs...)
 
-		// Idempotency
 		if HasVersion(outputDir, panel.Page, quality) && !opts.Force {
 			fmt.Fprintf(os.Stderr, "[%d/%d] Page %d: %s version exists, skipping (--force for new increment)\n",
 				idx, total, panel.Page, quality)
@@ -313,93 +362,40 @@ func Batch(client *api.Client, opts BatchOptions) error {
 			prefix:  prefix,
 		})
 	}
+	return work, skipped
+}
 
-	if opts.DryRun {
-		fmt.Fprintf(os.Stderr, "\nDry run: %d would be generated, %d skipped (of %d)\n",
-			len(work), skipped, total)
-		return nil
+func resolvePanel(cfg *config.Config, opts BatchOptions, panel config.Panel, idx, total int) (prefix string, refs []string, size, quality string, skip bool) {
+	if panel.Scene == "" {
+		return "", nil, "", "", false
 	}
-	if len(work) == 0 {
-		fmt.Fprintf(os.Stderr, "\nDone: 0 generated, %d skipped, 0 failed (of %d)\n", skipped, total)
-		return nil
+	resolved, err := ResolveScene(cfg, panel.Scene, opts.ConfigDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[%d/%d] Page %d: %v — skipping\n", idx, total, panel.Page, err)
+		return "", nil, "", "", true
 	}
+	return resolved.Prefix, resolved.Refs, resolved.Size, resolved.Quality, false
+}
 
-	parallel := opts.Parallel
-	if parallel < 1 {
-		parallel = 1
+func filterByPageSet(panels []config.Panel, pages []int) []config.Panel {
+	pageSet := make(map[int]bool, len(pages))
+	for _, p := range pages {
+		pageSet[p] = true
 	}
-
-	generated := 0
-	failed := 0
-	var mu sync.Mutex
-
-	runOne := func(item workItem) {
-		fmt.Fprintf(os.Stderr, "[%d/%d] Page %d (%s): generating...\n",
-			item.index, item.total, item.pageNum, item.scene)
-
-		fullPrompt, err := BuildPrompt(item.prompt, opts.StyleFile, item.prefix)
-		if err != nil {
-			mu.Lock()
-			fmt.Fprintf(os.Stderr, "  Page %d FAILED: %v\n", item.pageNum, err)
-			failed++
-			mu.Unlock()
-			return
+	filtered := panels[:0]
+	for _, p := range panels {
+		if pageSet[p.Page] {
+			filtered = append(filtered, p)
 		}
-
-		var imgData []byte
-		if len(item.refs) > 0 {
-			imgData, err = client.Edit(fullPrompt, item.refs, item.size, item.quality)
-		} else {
-			imgData, err = client.Generate(fullPrompt, item.size, item.quality)
-		}
-
-		if err != nil {
-			mu.Lock()
-			fmt.Fprintf(os.Stderr, "  Page %d FAILED: %v\n", item.pageNum, err)
-			failed++
-			mu.Unlock()
-			return
-		}
-
-		if werr := os.WriteFile(item.output, imgData, 0644); werr != nil {
-			mu.Lock()
-			fmt.Fprintf(os.Stderr, "  Page %d FAILED (write): %v\n", item.pageNum, werr)
-			failed++
-			mu.Unlock()
-			return
-		}
-
-		mu.Lock()
-		fmt.Fprintf(os.Stderr, "  Saved: %s\n", item.output)
-		generated++
-		mu.Unlock()
 	}
+	return filtered
+}
 
-	if parallel == 1 {
-		for _, item := range work {
-			runOne(item)
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
 		}
-	} else {
-		sem := make(chan struct{}, parallel)
-		var wg sync.WaitGroup
-		for _, item := range work {
-			item := item
-			sem <- struct{}{}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				defer func() { <-sem }()
-				runOne(item)
-			}()
-		}
-		wg.Wait()
 	}
-
-	fmt.Fprintf(os.Stderr, "\nDone: %d generated, %d skipped, %d failed (of %d panels)\n",
-		generated, skipped, failed, total)
-
-	if failed > 0 {
-		return fmt.Errorf("%d panel(s) failed", failed)
-	}
-	return nil
+	return ""
 }

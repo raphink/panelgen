@@ -105,48 +105,8 @@ OPTIONS
 		os.Exit(1)
 	}
 
-	// Positional args: [prompt] output
-	positional := fs.Args()
-	var prompt, output string
-	switch len(positional) {
-	case 1:
-		output = positional[0]
-	case 2:
-		prompt = positional[0]
-		output = positional[1]
-	default:
-		fs.Usage()
-		os.Exit(1)
-	}
-
-	if prompt == "" && *promptFile == "" {
-		fmt.Fprintln(os.Stderr, "panelgen: provide PROMPT or --prompt-file")
-		fs.Usage()
-		os.Exit(1)
-	}
-	if prompt != "" && *promptFile != "" {
-		fmt.Fprintln(os.Stderr, "panelgen: PROMPT and --prompt-file are mutually exclusive")
-		os.Exit(1)
-	}
-	if output == "" {
-		fmt.Fprintln(os.Stderr, "panelgen: OUTPUT is required")
-		fs.Usage()
-		os.Exit(1)
-	}
-
-	// Load config (optional for generate, required for --scene)
-	cfg := &config.Config{}
-	configDir := "."
-	if _, err := os.Stat(*configFile); err == nil {
-		loaded, err := config.Load(*configFile)
-		if err != nil {
-			fatalf("load config: %v", err)
-		}
-		cfg = loaded
-		configDir = filepath.Dir(*configFile)
-	} else if *sceneName != "" {
-		fatalf("--scene requires a config file (%s not found)", *configFile)
-	}
+	prompt, output := parseGeneratePositional(fs)
+	cfg, configDir := loadOptionalConfig(*configFile, *sceneName)
 
 	// Resolve scene
 	scenePrefix := ""
@@ -198,6 +158,51 @@ OPTIONS
 	}); err != nil {
 		fatalf("%v", err)
 	}
+}
+
+func parseGeneratePositional(fs *flag.FlagSet) (prompt, output string) {
+	positional := fs.Args()
+	switch len(positional) {
+	case 1:
+		output = positional[0]
+	case 2:
+		prompt = positional[0]
+		output = positional[1]
+	default:
+		fs.Usage()
+		os.Exit(1)
+	}
+	if prompt == "" && fs.Lookup("prompt-file").Value.String() == "" {
+		fmt.Fprintln(os.Stderr, "panelgen: provide PROMPT or --prompt-file")
+		fs.Usage()
+		os.Exit(1)
+	}
+	if prompt != "" && fs.Lookup("prompt-file").Value.String() != "" {
+		fmt.Fprintln(os.Stderr, "panelgen: PROMPT and --prompt-file are mutually exclusive")
+		os.Exit(1)
+	}
+	if output == "" {
+		fmt.Fprintln(os.Stderr, "panelgen: OUTPUT is required")
+		fs.Usage()
+		os.Exit(1)
+	}
+	return prompt, output
+}
+
+func loadOptionalConfig(configFile, sceneName string) (*config.Config, string) {
+	cfg := &config.Config{}
+	configDir := "."
+	if _, err := os.Stat(configFile); err == nil {
+		loaded, err := config.Load(configFile)
+		if err != nil {
+			fatalf("load config: %v", err)
+		}
+		cfg = loaded
+		configDir = filepath.Dir(configFile)
+	} else if sceneName != "" {
+		fatalf("--scene requires a config file (%s not found)", configFile)
+	}
+	return cfg, configDir
 }
 
 // ─── batch ────────────────────────────────────────────────────────────────────

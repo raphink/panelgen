@@ -50,65 +50,15 @@ OPTIONS
 		os.Exit(1)
 	}
 
-	// Load config to get output_dir and selected overrides
-	var cfg *config.Config
-	configDir := "."
-	if _, err := os.Stat(*configFile); err == nil {
-		loaded, err := config.Load(*configFile)
-		if err != nil {
-			fatalf("load config: %v", err)
-		}
-		cfg = loaded
-		configDir = filepath.Dir(*configFile)
-	}
-
-	// Resolve input dir: flag > config output_dir > "generated"
-	resolvedInput := *inputDir
-	if resolvedInput == "" && cfg != nil {
-		resolvedInput = filepath.Join(configDir, cfg.OutputDir)
-	}
-	if resolvedInput == "" {
-		resolvedInput = "generated"
-	}
-
-	// Resolve output PDF: flag > <config-stem>.pdf > "comic.pdf"
-	resolvedOutput := *output
-	if resolvedOutput == "" {
-		stem := strings.TrimSuffix(filepath.Base(*configFile), filepath.Ext(*configFile))
-		resolvedOutput = filepath.Join(filepath.Dir(*configFile), stem+".pdf")
-	}
+	cfg, resolvedInput, resolvedOutput := resolveAssemblePaths(*configFile, *inputDir, *output)
 
 	best, err := findBestImages(resolvedInput)
 	if err != nil {
 		fatalf("find images: %v", err)
 	}
 
-	// Apply selected overrides from config
 	if cfg != nil {
-		bestMap := make(map[int]string, len(best))
-		for _, c := range best {
-			bestMap[c.page] = c.path
-		}
-		for _, panel := range cfg.Panels {
-			if panel.Selected == "" {
-				continue
-			}
-			sel := filepath.Join(resolvedInput, panel.Selected)
-			if _, err := os.Stat(sel); err != nil {
-				fmt.Fprintf(os.Stderr, "WARNING: page %d selected %q not found, using auto\n", panel.Page, panel.Selected)
-				continue
-			}
-			bestMap[panel.Page] = sel
-		}
-		pages := make([]int, 0, len(bestMap))
-		for p := range bestMap {
-			pages = append(pages, p)
-		}
-		sort.Ints(pages)
-		best = best[:0]
-		for _, p := range pages {
-			best = append(best, pageCandidate{page: p, path: bestMap[p]})
-		}
+		best = applySelectedOverrides(cfg, resolvedInput, best)
 	}
 
 	if len(best) == 0 {
@@ -129,6 +79,62 @@ OPTIONS
 		fatalf("assemble PDF: %v", err)
 	}
 	fmt.Printf("Assembled %d pages -> %s\n", len(best), resolvedOutput)
+}
+
+func resolveAssemblePaths(configFile, inputDir, output string) (*config.Config, string, string) {
+	var cfg *config.Config
+	configDir := "."
+	if _, err := os.Stat(configFile); err == nil {
+		loaded, err := config.Load(configFile)
+		if err != nil {
+			fatalf("load config: %v", err)
+		}
+		cfg = loaded
+		configDir = filepath.Dir(configFile)
+	}
+
+	resolvedInput := inputDir
+	if resolvedInput == "" && cfg != nil {
+		resolvedInput = filepath.Join(configDir, cfg.OutputDir)
+	}
+	if resolvedInput == "" {
+		resolvedInput = "generated"
+	}
+
+	resolvedOutput := output
+	if resolvedOutput == "" {
+		stem := strings.TrimSuffix(filepath.Base(configFile), filepath.Ext(configFile))
+		resolvedOutput = filepath.Join(filepath.Dir(configFile), stem+".pdf")
+	}
+	return cfg, resolvedInput, resolvedOutput
+}
+
+func applySelectedOverrides(cfg *config.Config, inputDir string, best []pageCandidate) []pageCandidate {
+	bestMap := make(map[int]string, len(best))
+	for _, c := range best {
+		bestMap[c.page] = c.path
+	}
+	for _, panel := range cfg.Panels {
+		if panel.Selected == "" {
+			continue
+		}
+		sel := filepath.Join(inputDir, panel.Selected)
+		if _, err := os.Stat(sel); err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: page %d selected %q not found, using auto\n", panel.Page, panel.Selected)
+			continue
+		}
+		bestMap[panel.Page] = sel
+	}
+	pages := make([]int, 0, len(bestMap))
+	for p := range bestMap {
+		pages = append(pages, p)
+	}
+	sort.Ints(pages)
+	result := best[:0]
+	for _, p := range pages {
+		result = append(result, pageCandidate{page: p, path: bestMap[p]})
+	}
+	return result
 }
 
 func findBestImages(dir string) ([]pageCandidate, error) {
