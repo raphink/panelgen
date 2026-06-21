@@ -112,6 +112,9 @@ panelgen batch -parallel 4
 
 # Quality override
 panelgen batch -quality high
+
+# Assemble PDF after generation
+panelgen batch --assemble
 ```
 
 ### Lint config
@@ -166,11 +169,16 @@ panelgen batch --config panelgen.yml
 ## Config format
 
 ```yaml
+imports:
+  - ../shared/characters.yml   # Merge characters, scenes, style, and defaults from other files
+  - ../shared/scenes.yml       # Importing file's values take precedence on conflict
+
 style: style.txt          # Style guide prepended to every prompt
 
 defaults:
-  size: 1024x1024
+  size: 1024x1024         # Any WxH where both dims are divisible by 16 and total ≤ 8,294,400 px
   quality: low
+  assemble: true          # Automatically assemble a PDF after every batch run
 
 output_dir: generated/
 
