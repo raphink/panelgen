@@ -163,6 +163,99 @@ func TestLoad_Import_CycleDetected(t *testing.T) {
 	}
 }
 
+func TestLoad_Import_StyleInherited(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, dir, "base.yml", `style: shared/style.txt`)
+	path := writeYAML(t, dir, "project.yml", `
+imports:
+  - base.yml
+panels:
+  - page: 1
+    prompt: hello
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Style != "shared/style.txt" {
+		t.Errorf("expected inherited style, got %q", cfg.Style)
+	}
+}
+
+func TestLoad_Import_StyleOverridden(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, dir, "base.yml", `style: base/style.txt`)
+	path := writeYAML(t, dir, "project.yml", `
+imports:
+  - base.yml
+style: project/style.txt
+panels:
+  - page: 1
+    prompt: hello
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Style != "project/style.txt" {
+		t.Errorf("expected project style to win, got %q", cfg.Style)
+	}
+}
+
+func TestLoad_Import_DefaultsInherited(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, dir, "base.yml", `
+defaults:
+  size: 1536x1024
+  quality: medium
+`)
+	path := writeYAML(t, dir, "project.yml", `
+imports:
+  - base.yml
+panels:
+  - page: 1
+    prompt: hello
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Defaults.Size != "1536x1024" {
+		t.Errorf("expected inherited size, got %q", cfg.Defaults.Size)
+	}
+	if cfg.Defaults.Quality != "medium" {
+		t.Errorf("expected inherited quality, got %q", cfg.Defaults.Quality)
+	}
+}
+
+func TestLoad_Import_DefaultsOverridden(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, dir, "base.yml", `
+defaults:
+  size: 1536x1024
+  quality: medium
+`)
+	path := writeYAML(t, dir, "project.yml", `
+imports:
+  - base.yml
+defaults:
+  quality: low
+panels:
+  - page: 1
+    prompt: hello
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Defaults.Size != "1536x1024" {
+		t.Errorf("expected inherited size, got %q", cfg.Defaults.Size)
+	}
+	if cfg.Defaults.Quality != "low" {
+		t.Errorf("expected project quality to win, got %q", cfg.Defaults.Quality)
+	}
+}
+
 func TestLoad_Import_MissingFile(t *testing.T) {
 	dir := t.TempDir()
 	path := writeYAML(t, dir, "project.yml", `imports: [nonexistent.yml]`)

@@ -94,6 +94,15 @@ func load(absPath string, seen map[string]bool) (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("import %s: %w", imp, err)
 		}
+		if base.Style == "" {
+			base.Style = imported.Style
+		}
+		if base.Defaults.Size == "" {
+			base.Defaults.Size = imported.Defaults.Size
+		}
+		if base.Defaults.Quality == "" {
+			base.Defaults.Quality = imported.Defaults.Quality
+		}
 		for k, v := range imported.Characters {
 			base.Characters[k] = v
 		}
@@ -103,6 +112,15 @@ func load(absPath string, seen map[string]bool) (*Config, error) {
 	}
 
 	// Merge: cfg overrides base.
+	if cfg.Style == "" {
+		cfg.Style = base.Style
+	}
+	if cfg.Defaults.Size == "" {
+		cfg.Defaults.Size = base.Defaults.Size
+	}
+	if cfg.Defaults.Quality == "" {
+		cfg.Defaults.Quality = base.Defaults.Quality
+	}
 	for k, v := range cfg.Characters {
 		base.Characters[k] = v
 	}
