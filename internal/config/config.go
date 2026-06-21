@@ -4,12 +4,14 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
 
 // Config is the top-level panelgen configuration.
 type Config struct {
+	Imports    []string             `yaml:"imports"`
 	Style      string               `yaml:"style"`
 	OutputDir  string               `yaml:"output_dir"`
 	Defaults   Defaults             `yaml:"defaults"`
@@ -45,9 +47,22 @@ type Panel struct {
 	Selected string   `yaml:"selected"`
 }
 
-// Load reads a panelgen YAML config file.
+// Load reads a panelgen YAML config file, recursively merging any imports.
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve path %s: %w", path, err)
+	}
+	return load(abs, map[string]bool{})
+}
+
+func load(absPath string, seen map[string]bool) (*Config, error) {
+	if seen[absPath] {
+		return nil, fmt.Errorf("import cycle detected: %s", absPath)
+	}
+	seen[absPath] = true
+
+	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("open config: %w", err)
 	}
@@ -59,6 +74,43 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
+
+	// Process imports first, then let cfg's own definitions override.
+	base := &Config{
+		Scenes:     make(map[string]Scene),
+		Characters: make(map[string]Character),
+	}
+	dir := filepath.Dir(absPath)
+	for _, imp := range cfg.Imports {
+		impPath := imp
+		if !filepath.IsAbs(impPath) {
+			impPath = filepath.Join(dir, imp)
+		}
+		impAbs, err := filepath.Abs(impPath)
+		if err != nil {
+			return nil, fmt.Errorf("resolve import %s: %w", imp, err)
+		}
+		imported, err := load(impAbs, seen)
+		if err != nil {
+			return nil, fmt.Errorf("import %s: %w", imp, err)
+		}
+		for k, v := range imported.Characters {
+			base.Characters[k] = v
+		}
+		for k, v := range imported.Scenes {
+			base.Scenes[k] = v
+		}
+	}
+
+	// Merge: cfg overrides base.
+	for k, v := range cfg.Characters {
+		base.Characters[k] = v
+	}
+	for k, v := range cfg.Scenes {
+		base.Scenes[k] = v
+	}
+	cfg.Characters = base.Characters
+	cfg.Scenes = base.Scenes
 
 	if cfg.Defaults.Size == "" {
 		cfg.Defaults.Size = "1024x1024"
