@@ -229,6 +229,7 @@ OPTIONS
 	force := fs.Bool("force", false, "Generate new version even if output exists")
 	dryRun := fs.Bool("dry-run", false, "Show what would be generated without calling the API")
 	parallel := fs.Int("parallel", 1, "Number of parallel generations")
+	assemble := fs.Bool("assemble", false, "Assemble PDF after generation (overrides defaults.assemble)")
 
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
@@ -275,6 +276,10 @@ OPTIONS
 		Parallel:  *parallel,
 	}); err != nil {
 		fatalf("%v", err)
+	}
+
+	if *assemble || (cfg.Defaults.Assemble != nil && *cfg.Defaults.Assemble) {
+		cmdAssemble([]string{"--config", cfgPath})
 	}
 }
 

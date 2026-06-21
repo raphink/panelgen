@@ -21,8 +21,9 @@ type Config struct {
 }
 
 type Defaults struct {
-	Size    string `yaml:"size"`
-	Quality string `yaml:"quality"`
+	Size     string `yaml:"size"`
+	Quality  string `yaml:"quality"`
+	Assemble *bool  `yaml:"assemble"`
 }
 
 type Character struct {
@@ -103,6 +104,9 @@ func load(absPath string, seen map[string]bool) (*Config, error) {
 		if base.Defaults.Quality == "" {
 			base.Defaults.Quality = imported.Defaults.Quality
 		}
+		if base.Defaults.Assemble == nil {
+			base.Defaults.Assemble = imported.Defaults.Assemble
+		}
 		for k, v := range imported.Characters {
 			base.Characters[k] = v
 		}
@@ -120,6 +124,9 @@ func load(absPath string, seen map[string]bool) (*Config, error) {
 	}
 	if cfg.Defaults.Quality == "" {
 		cfg.Defaults.Quality = base.Defaults.Quality
+	}
+	if cfg.Defaults.Assemble == nil {
+		cfg.Defaults.Assemble = base.Defaults.Assemble
 	}
 	for k, v := range cfg.Characters {
 		base.Characters[k] = v
