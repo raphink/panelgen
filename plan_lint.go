@@ -217,7 +217,18 @@ func planOnePanel(panel config.Panel, cfg *config.Config, configDir, outputDir, 
 	finalSize := firstNonEmpty(size, sceneSize, cfg.Defaults.Size, "1024x1024")
 	finalQuality := firstNonEmpty(quality, sceneQuality, cfg.Defaults.Quality, "high")
 
+	panelCharDescs, panelCharRefs := generate.ResolveCharacters(cfg, panel.Characters, configDir)
+	if len(panelCharDescs) > 0 {
+		extra := strings.Join(panelCharDescs, "\n\n")
+		if prefix != "" {
+			prefix = prefix + "\n\n" + extra
+		} else {
+			prefix = extra
+		}
+	}
+
 	var panelRefs []string
+	panelRefs = append(panelRefs, panelCharRefs...)
 	for _, r := range panel.Refs {
 		path := r
 		if !filepath.IsAbs(path) {

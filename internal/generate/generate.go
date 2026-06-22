@@ -73,6 +73,31 @@ type ResolvedScene struct {
 	Quality string
 }
 
+// ResolveCharacters returns descriptions and absolute ref paths for a list of character names.
+func ResolveCharacters(cfg *config.Config, names []string, configDir string) (descriptions, refs []string) {
+	seen := map[string]bool{}
+	for _, name := range names {
+		char, ok := cfg.Characters[name]
+		if !ok {
+			continue
+		}
+		if char.Description != "" {
+			descriptions = append(descriptions, strings.TrimSpace(char.Description))
+		}
+		for _, r := range char.Refs {
+			path := r
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(configDir, r)
+			}
+			if !seen[path] {
+				seen[path] = true
+				refs = append(refs, path)
+			}
+		}
+	}
+	return
+}
+
 func ResolveScene(cfg *config.Config, sceneName string, configDir string) (*ResolvedScene, error) {
 	scene, ok := cfg.Scenes[sceneName]
 	if !ok {
@@ -84,9 +109,9 @@ func ResolveScene(cfg *config.Config, sceneName string, configDir string) (*Reso
 		return nil, fmt.Errorf("unknown scene %q — available: %s", sceneName, strings.Join(names, ", "))
 	}
 
-	var refs []string
-	seen := map[string]bool{}
+	charDescriptions, charRefs := ResolveCharacters(cfg, scene.Characters, configDir)
 
+	seen := map[string]bool{}
 	addRef := func(r string) {
 		path := r
 		if !filepath.IsAbs(path) {
@@ -94,20 +119,11 @@ func ResolveScene(cfg *config.Config, sceneName string, configDir string) (*Reso
 		}
 		if !seen[path] {
 			seen[path] = true
-			refs = append(refs, path)
+			charRefs = append(charRefs, path)
 		}
 	}
-
-	var charDescriptions []string
-	for _, charName := range scene.Characters {
-		if char, ok := cfg.Characters[charName]; ok {
-			if char.Description != "" {
-				charDescriptions = append(charDescriptions, strings.TrimSpace(char.Description))
-			}
-			for _, r := range char.Refs {
-				addRef(r)
-			}
-		}
+	for _, r := range charRefs {
+		seen[r] = true
 	}
 	for _, r := range scene.Refs {
 		addRef(r)
@@ -123,7 +139,7 @@ func ResolveScene(cfg *config.Config, sceneName string, configDir string) (*Reso
 
 	return &ResolvedScene{
 		Prefix:  prefix,
-		Refs:    refs,
+		Refs:    charRefs,
 		Size:    scene.Size,
 		Quality: scene.Quality,
 	}, nil
@@ -336,7 +352,18 @@ func buildWorkList(panels []config.Panel, cfg *config.Config, opts BatchOptions,
 		size := firstNonEmpty(opts.Size, sceneSize, cfg.Defaults.Size)
 		quality := firstNonEmpty(opts.Quality, sceneQuality, cfg.Defaults.Quality)
 
+		panelCharDescs, panelCharRefs := ResolveCharacters(cfg, panel.Characters, opts.ConfigDir)
+		if len(panelCharDescs) > 0 {
+			extra := strings.Join(panelCharDescs, "\n\n")
+			if prefix != "" {
+				prefix = prefix + "\n\n" + extra
+			} else {
+				prefix = extra
+			}
+		}
+
 		var panelRefs []string
+		panelRefs = append(panelRefs, panelCharRefs...)
 		for _, r := range panel.Refs {
 			path := r
 			if !filepath.IsAbs(path) {
