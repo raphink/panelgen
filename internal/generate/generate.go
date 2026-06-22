@@ -98,8 +98,12 @@ func ResolveScene(cfg *config.Config, sceneName string, configDir string) (*Reso
 		}
 	}
 
+	var charDescriptions []string
 	for _, charName := range scene.Characters {
 		if char, ok := cfg.Characters[charName]; ok {
+			if char.Description != "" {
+				charDescriptions = append(charDescriptions, strings.TrimSpace(char.Description))
+			}
 			for _, r := range char.Refs {
 				addRef(r)
 			}
@@ -109,8 +113,16 @@ func ResolveScene(cfg *config.Config, sceneName string, configDir string) (*Reso
 		addRef(r)
 	}
 
+	prefix := strings.Join(charDescriptions, "\n\n")
+	if scene.PromptPrefix != "" {
+		if prefix != "" {
+			prefix += "\n\n"
+		}
+		prefix += strings.TrimSpace(scene.PromptPrefix)
+	}
+
 	return &ResolvedScene{
-		Prefix:  scene.PromptPrefix,
+		Prefix:  prefix,
 		Refs:    refs,
 		Size:    scene.Size,
 		Quality: scene.Quality,

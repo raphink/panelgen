@@ -3,6 +3,7 @@ package generate
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/raphink/panelgen/internal/config"
@@ -131,6 +132,65 @@ func TestResolveScene_Basic(t *testing.T) {
 	}
 	if len(r.Refs) != 0 {
 		t.Errorf("expected no refs, got %v", r.Refs)
+	}
+}
+
+func TestResolveScene_CharacterDescriptionInPrefix(t *testing.T) {
+	cfg := &config.Config{
+		Scenes: map[string]config.Scene{
+			"s": {Characters: []string{"fox"}, PromptPrefix: "Space setting."},
+		},
+		Characters: map[string]config.Character{
+			"fox": {Description: "Clockwork fox in a white space suit."},
+		},
+	}
+	r, err := ResolveScene(cfg, "s", ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Clockwork fox in a white space suit.\n\nSpace setting."
+	if r.Prefix != want {
+		t.Errorf("prefix: got %q, want %q", r.Prefix, want)
+	}
+}
+
+func TestResolveScene_MultipleCharacterDescriptions(t *testing.T) {
+	cfg := &config.Config{
+		Scenes: map[string]config.Scene{
+			"s": {Characters: []string{"fox", "wolf"}},
+		},
+		Characters: map[string]config.Character{
+			"fox":  {Description: "Clockwork fox."},
+			"wolf": {Description: "Steel wolf."},
+		},
+	}
+	r, err := ResolveScene(cfg, "s", ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(r.Prefix, "Clockwork fox.") {
+		t.Errorf("missing fox description in prefix: %q", r.Prefix)
+	}
+	if !strings.Contains(r.Prefix, "Steel wolf.") {
+		t.Errorf("missing wolf description in prefix: %q", r.Prefix)
+	}
+}
+
+func TestResolveScene_NoDescriptionNoChange(t *testing.T) {
+	cfg := &config.Config{
+		Scenes: map[string]config.Scene{
+			"s": {Characters: []string{"fox"}, PromptPrefix: "Space setting."},
+		},
+		Characters: map[string]config.Character{
+			"fox": {Description: ""},
+		},
+	}
+	r, err := ResolveScene(cfg, "s", ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Prefix != "Space setting." {
+		t.Errorf("prefix: got %q", r.Prefix)
 	}
 }
 
