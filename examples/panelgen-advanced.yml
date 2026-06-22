@@ -8,18 +8,18 @@ output_dir: generated
 
 characters:
   explorer:
-    description: "Clockwork fox explorer in white spacesuit"
+    prompt: "Clockwork fox explorer in white spacesuit"
     refs:
       - refs/clockwork-fox.png
 
   sidekick:
-    description: "Small helper robot with a single blue lens"
+    prompt: "Small helper robot with a single blue lens"
     refs:
       - refs/robot-sidekick.png
 
 scenes:
   bridge:
-    description: "Inside a spacecraft bridge"
+    prompt: "Inside a spacecraft bridge"
     prompt_prefix: >
       Comic panel aboard a spacecraft bridge, cinematic framing, clear
       silhouettes, consistent visual identity.

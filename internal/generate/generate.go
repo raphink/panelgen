@@ -73,16 +73,17 @@ type ResolvedScene struct {
 	Quality string
 }
 
-// ResolveCharacters returns descriptions and absolute ref paths for a list of character names.
-func ResolveCharacters(cfg *config.Config, names []string, configDir string) (descriptions, refs []string) {
+// ResolveCharacters returns prompt snippets (prefixed with the character name) and
+// absolute ref paths for a list of character names, for injection into scene/panel prompts.
+func ResolveCharacters(cfg *config.Config, names []string, configDir string) (prompts, refs []string) {
 	seen := map[string]bool{}
 	for _, name := range names {
 		char, ok := cfg.Characters[name]
 		if !ok {
 			continue
 		}
-		if char.Description != "" {
-			descriptions = append(descriptions, strings.TrimSpace(char.Description))
+		if char.Prompt != "" {
+			prompts = append(prompts, fmt.Sprintf("Character %q: %s", name, strings.TrimSpace(char.Prompt)))
 		}
 		for _, r := range char.Refs {
 			path := r

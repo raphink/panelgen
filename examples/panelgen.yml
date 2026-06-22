@@ -8,13 +8,13 @@ output_dir: generated
 
 characters:
   explorer:
-    description: "Clockwork fox character in a white spacesuit and clear helmet"
+    prompt: "Clockwork fox character in a white spacesuit and clear helmet"
     refs:
       - refs/clockwork-fox.png
 
 scenes:
   space-solo:
-    description: "Single character in open space"
+    prompt: "Single character in open space"
     prompt_prefix: >
       Comic panel in outer space with strong contrast, readable subject,
       and clean composition suitable for a story sequence.

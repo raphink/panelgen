@@ -144,6 +144,25 @@ panelgen scenes
 panelgen scenes -config comic.yml
 ```
 
+### Character reference images
+
+```bash
+# List characters and their prompts
+panelgen characters list
+
+# Generate a specific character
+panelgen characters generate explorer
+
+# Generate all characters
+panelgen characters generate --all
+
+# Override output directory, size, or quality
+panelgen characters generate --all --output-dir refs/chars --quality low
+```
+
+Output files are versioned: `characters/explorer-1.png`, `characters/explorer-2.png`, etc.
+The output directory defaults to `characters/` next to the config, or `defaults.characters_dir` if set.
+
 ### Starter example files
 
 ```bash
@@ -179,14 +198,15 @@ defaults:
   size: 1024x1024         # Any WxH where both dims are divisible by 16 and total ≤ 8,294,400 px
   quality: low
   assemble: true          # Automatically assemble a PDF after every batch run
+  characters_dir: refs/chars  # Output directory for generated character images (default: characters/)
 
 output_dir: generated/
 
 characters:
   explorer:
-    description: "Clockwork fox explorer — white space suit, glass helmet"
+    prompt: "Clockwork fox explorer — white space suit, glass helmet"
     refs:
-      - characters/clockwork-fox.png
+      - characters/explorer-1.png
 
 scenes:
   space-solo:

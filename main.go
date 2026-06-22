@@ -41,6 +41,8 @@ func main() {
 		cmdLint(os.Args[2:])
 	case "scenes":
 		cmdScenes(os.Args[2:])
+	case "characters", "chars":
+		cmdCharacters(os.Args[2:])
 	case "assemble":
 		cmdAssemble(os.Args[2:])
 	case "help", "--help", "-h":
@@ -58,12 +60,14 @@ func usage() {
 	fmt.Fprint(os.Stderr, `panelgen — AI image series generator
 
 COMMANDS
-  generate  Generate a single image
-  batch     Generate all panels from a config file
-  plan      Show what batch would generate without API calls
-  lint      Validate config and local file references
-  scenes    List scenes defined in a config file
-  assemble  Assemble generated images into a PDF
+  generate              Generate a single image
+  batch                 Generate all panels from a config file
+  plan                  Show what batch would generate without API calls
+  lint                  Validate config and local file references
+  scenes                List scenes defined in a config file
+  characters list       List characters and their prompts
+  characters generate   Generate character reference images
+  assemble              Assemble generated images into a PDF
 
 Run 'panelgen COMMAND --help' for command-specific options.
 `)

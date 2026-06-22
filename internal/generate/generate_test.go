@@ -141,14 +141,14 @@ func TestResolveScene_CharacterDescriptionInPrefix(t *testing.T) {
 			"s": {Characters: []string{"fox"}, PromptPrefix: "Space setting."},
 		},
 		Characters: map[string]config.Character{
-			"fox": {Description: "Clockwork fox in a white space suit."},
+			"fox": {Prompt: "Clockwork fox in a white space suit."},
 		},
 	}
 	r, err := ResolveScene(cfg, "s", ".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Clockwork fox in a white space suit.\n\nSpace setting."
+	want := `Character "fox": Clockwork fox in a white space suit.` + "\n\nSpace setting."
 	if r.Prefix != want {
 		t.Errorf("prefix: got %q, want %q", r.Prefix, want)
 	}
@@ -160,19 +160,19 @@ func TestResolveScene_MultipleCharacterDescriptions(t *testing.T) {
 			"s": {Characters: []string{"fox", "wolf"}},
 		},
 		Characters: map[string]config.Character{
-			"fox":  {Description: "Clockwork fox."},
-			"wolf": {Description: "Steel wolf."},
+			"fox":  {Prompt: "Clockwork fox."},
+			"wolf": {Prompt: "Steel wolf."},
 		},
 	}
 	r, err := ResolveScene(cfg, "s", ".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(r.Prefix, "Clockwork fox.") {
-		t.Errorf("missing fox description in prefix: %q", r.Prefix)
+	if !strings.Contains(r.Prefix, `Character "fox": Clockwork fox.`) {
+		t.Errorf("missing fox in prefix: %q", r.Prefix)
 	}
-	if !strings.Contains(r.Prefix, "Steel wolf.") {
-		t.Errorf("missing wolf description in prefix: %q", r.Prefix)
+	if !strings.Contains(r.Prefix, `Character "wolf": Steel wolf.`) {
+		t.Errorf("missing wolf in prefix: %q", r.Prefix)
 	}
 }
 
@@ -182,7 +182,7 @@ func TestResolveScene_NoDescriptionNoChange(t *testing.T) {
 			"s": {Characters: []string{"fox"}, PromptPrefix: "Space setting."},
 		},
 		Characters: map[string]config.Character{
-			"fox": {Description: ""},
+			"fox": {Prompt: ""},
 		},
 	}
 	r, err := ResolveScene(cfg, "s", ".")

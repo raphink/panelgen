@@ -21,14 +21,15 @@ type Config struct {
 }
 
 type Defaults struct {
-	Size     string `yaml:"size"`
-	Quality  string `yaml:"quality"`
-	Assemble *bool  `yaml:"assemble"`
+	Size          string `yaml:"size"`
+	Quality       string `yaml:"quality"`
+	Assemble      *bool  `yaml:"assemble"`
+	CharactersDir string `yaml:"characters_dir"`
 }
 
 type Character struct {
-	Description string   `yaml:"description"`
-	Refs        []string `yaml:"refs"`
+	Prompt string   `yaml:"prompt"`
+	Refs   []string `yaml:"refs"`
 }
 
 type Scene struct {
@@ -108,6 +109,9 @@ func load(absPath string, seen map[string]bool) (*Config, error) {
 		if base.Defaults.Assemble == nil {
 			base.Defaults.Assemble = imported.Defaults.Assemble
 		}
+		if base.Defaults.CharactersDir == "" {
+			base.Defaults.CharactersDir = imported.Defaults.CharactersDir
+		}
 		for k, v := range imported.Characters {
 			base.Characters[k] = v
 		}
@@ -128,6 +132,9 @@ func load(absPath string, seen map[string]bool) (*Config, error) {
 	}
 	if cfg.Defaults.Assemble == nil {
 		cfg.Defaults.Assemble = base.Defaults.Assemble
+	}
+	if cfg.Defaults.CharactersDir == "" {
+		cfg.Defaults.CharactersDir = base.Defaults.CharactersDir
 	}
 	for k, v := range cfg.Characters {
 		base.Characters[k] = v
