@@ -451,18 +451,14 @@ Output: <characters_dir>/<name>-<N>.png`,
 				continue
 			}
 
-			// Use the latest generated version as the ref if one exists,
-			// otherwise fall back to the YAML refs.
+			// Always use the YAML refs when generating a character image —
+			// the point is to regenerate from the original concept.
 			var refs []string
-			if latest := latestCharacterRef(resolvedOutput, name); latest != "" {
-				refs = []string{latest}
-			} else {
-				for _, r := range char.Refs {
-					if filepath.IsAbs(r) {
-						refs = append(refs, r)
-					} else {
-						refs = append(refs, filepath.Join(configDir, r))
-					}
+			for _, r := range char.Refs {
+				if filepath.IsAbs(r) {
+					refs = append(refs, r)
+				} else {
+					refs = append(refs, filepath.Join(configDir, r))
 				}
 			}
 

@@ -75,8 +75,25 @@ type ResolvedScene struct {
 
 // ResolveCharacters returns prompt snippets (prefixed with the character name) and
 // absolute ref paths for a list of character names, for injection into scene/panel prompts.
+// If a generated character image exists in the characters dir, it is used as the ref
+// instead of the YAML refs — so panels automatically pick up the latest generated version.
 func ResolveCharacters(cfg *config.Config, names []string, configDir string) (prompts, refs []string) {
+	charsDir := cfg.Defaults.CharactersDir
+	if charsDir == "" {
+		charsDir = "characters"
+	}
+	if !filepath.IsAbs(charsDir) {
+		charsDir = filepath.Join(configDir, charsDir)
+	}
+
 	seen := map[string]bool{}
+	addRef := func(path string) {
+		if !seen[path] {
+			seen[path] = true
+			refs = append(refs, path)
+		}
+	}
+
 	for _, name := range names {
 		char, ok := cfg.Characters[name]
 		if !ok {
@@ -85,18 +102,35 @@ func ResolveCharacters(cfg *config.Config, names []string, configDir string) (pr
 		if char.Prompt != "" {
 			prompts = append(prompts, fmt.Sprintf("Character %q: %s", name, strings.TrimSpace(char.Prompt)))
 		}
-		for _, r := range char.Refs {
-			path := r
-			if !filepath.IsAbs(path) {
-				path = filepath.Join(configDir, r)
-			}
-			if !seen[path] {
-				seen[path] = true
-				refs = append(refs, path)
+		if latest := latestCharacterRef(charsDir, name); latest != "" {
+			addRef(latest)
+		} else {
+			for _, r := range char.Refs {
+				path := r
+				if !filepath.IsAbs(path) {
+					path = filepath.Join(configDir, r)
+				}
+				addRef(path)
 			}
 		}
 	}
 	return
+}
+
+var charVersionRe = regexp.MustCompile(`-(\d+)\.png$`)
+
+// latestCharacterRef returns the highest-numbered <name>-N.png in dir, or "" if none exist.
+func latestCharacterRef(dir, name string) string {
+	matches, _ := filepath.Glob(filepath.Join(dir, name+"-*.png"))
+	best, max := "", 0
+	for _, m := range matches {
+		if sub := charVersionRe.FindStringSubmatch(m); sub != nil {
+			if n, err := strconv.Atoi(sub[1]); err == nil && n > max {
+				max, best = n, m
+			}
+		}
+	}
+	return best
 }
 
 func ResolveScene(cfg *config.Config, sceneName string, configDir string) (*ResolvedScene, error) {
