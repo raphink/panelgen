@@ -63,9 +63,12 @@ func printPlanResult(result panelPlanResult, panel config.Panel, idx, total int,
 		invalid++
 	case "plan":
 		fmt.Fprintf(os.Stdout, "[%d/%d] page=%d scene=%s status=plan\n", idx, total, panel.Page, panel.Scene)
-		fmt.Fprintf(os.Stdout, "  output : %s\n  size   : %s\n  quality: %s\n  refs   : %d\n",
-			result.output, result.size, result.quality, len(result.refs))
-		if showRefs {
+		fmt.Fprintf(os.Stdout, "  output : %s\n  size   : %s\n  quality: %s\n",
+			result.output, result.size, result.quality)
+		if len(result.refs) == 0 {
+			fmt.Fprintln(os.Stdout, "  refs   : (none)")
+		} else {
+			fmt.Fprintln(os.Stdout, "  refs   :")
 			for _, r := range result.refs {
 				fmt.Fprintf(os.Stdout, "    - %s\n", r)
 			}

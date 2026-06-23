@@ -474,9 +474,14 @@ Output: <characters_dir>/<name>-<N>.png`,
 					continue
 				}
 				fmt.Printf("=== %s ===\n", name)
-				fmt.Printf("size   : %s\nquality: %s\nrefs   : %d\n", finalSize, finalQuality, len(refs))
-				for _, r := range refs {
-					fmt.Printf("  - %s\n", r)
+				fmt.Printf("size   : %s\nquality: %s\n", finalSize, finalQuality)
+				if len(refs) == 0 {
+					fmt.Println("refs   : (none)")
+				} else {
+					fmt.Println("refs   :")
+					for _, r := range refs {
+						fmt.Printf("  - %s\n", r)
+					}
 				}
 				fmt.Printf("prompt :\n")
 				for _, line := range strings.Split(prompt, "\n") {
