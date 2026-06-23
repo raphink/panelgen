@@ -58,6 +58,30 @@ func NextVersion(outputDir string, pageNum int, quality string) string {
 	return filepath.Join(outputDir, fmt.Sprintf("page_%d_%s-%d.png", pageNum, quality, max+1))
 }
 
+// BestPageImage returns the path of the best existing image for a page:
+// highest quality (high > medium > low) then highest increment.
+// Returns "" if no image exists for that page.
+func BestPageImage(outputDir string, pageNum int) string {
+	qualityRank := map[string]int{"high": 3, "medium": 2, "low": 1}
+	re := regexp.MustCompile(`^page_\d+_(low|medium|high)-(\d+)\.png$`)
+	best, bestQ, bestN := "", 0, 0
+	for _, q := range []string{"high", "medium", "low"} {
+		pattern := filepath.Join(outputDir, fmt.Sprintf("page_%d_%s-*.png", pageNum, q))
+		matches, _ := filepath.Glob(pattern)
+		for _, m := range matches {
+			sub := re.FindStringSubmatch(filepath.Base(m))
+			if sub == nil {
+				continue
+			}
+			n, _ := strconv.Atoi(sub[2])
+			if qualityRank[q] > bestQ || (qualityRank[q] == bestQ && n > bestN) {
+				best, bestQ, bestN = m, qualityRank[q], n
+			}
+		}
+	}
+	return best
+}
+
 func HasVersion(outputDir string, pageNum int, quality string) bool {
 	pattern := filepath.Join(outputDir, fmt.Sprintf("page_%d_%s-*.png", pageNum, quality))
 	matches, _ := filepath.Glob(pattern)
@@ -399,6 +423,14 @@ func buildWorkList(panels []config.Panel, cfg *config.Config, opts BatchOptions,
 
 		var panelRefs []string
 		panelRefs = append(panelRefs, panelCharRefs...)
+		if panel.Continue > 0 {
+			if img := BestPageImage(outputDir, panel.Continue); img != "" {
+				panelRefs = append(panelRefs, img)
+			} else {
+				fmt.Fprintf(os.Stderr, "[%d/%d] Page %d: continue=%d but no image found for that page\n",
+					idx, total, panel.Page, panel.Continue)
+			}
+		}
 		for _, r := range panel.Refs {
 			path := r
 			if !filepath.IsAbs(path) {

@@ -130,6 +130,11 @@ func planOnePanel(panel config.Panel, cfg *config.Config, configDir, outputDir, 
 
 	var panelRefs []string
 	panelRefs = append(panelRefs, panelCharRefs...)
+	if panel.Continue > 0 {
+		if img := generate.BestPageImage(outputDir, panel.Continue); img != "" {
+			panelRefs = append(panelRefs, img)
+		}
+	}
 	for _, r := range panel.Refs {
 		path := r
 		if !filepath.IsAbs(path) {

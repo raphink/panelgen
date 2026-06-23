@@ -48,6 +48,7 @@ type Panel struct {
 	Characters []string `yaml:"characters"`
 	Prompt     string   `yaml:"prompt"`
 	Refs       []string `yaml:"refs"`
+	Continue   int      `yaml:"continue"`
 	Selected   string   `yaml:"selected"`
 }
 
