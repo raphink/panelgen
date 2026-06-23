@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"image/png"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/signintech/gopdf"
+	"github.com/spf13/cobra"
 
 	"github.com/raphink/panelgen/internal/config"
 )
@@ -27,30 +27,34 @@ type pageCandidate struct {
 	path      string
 }
 
-func cmdAssemble(args []string) {
-	fs := flag.NewFlagSet("assemble", flag.ExitOnError)
-	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, `Usage: panelgen assemble [options]
+var (
+	assembleInput   string
+	assembleOutput  string
+	assembleVerbose bool
+	assembleList    bool
+)
 
-Assemble generated page images into a PDF.
-For each page, picks the highest quality then latest increment.
+var assembleCmd = &cobra.Command{
+	Use:   "assemble",
+	Short: "Assemble generated images into a PDF",
+	Long: `Assemble generated page images into a PDF.
+For each page, picks the highest quality then latest increment.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		runAssemble(configFile, assembleInput, assembleOutput, assembleVerbose, assembleList)
+		return nil
+	},
+}
 
-OPTIONS
-`)
-		fs.PrintDefaults()
-	}
+func init() {
+	assembleCmd.Flags().StringVar(&assembleInput, "input", "", "Directory containing page images (default: output_dir from config)")
+	assembleCmd.Flags().StringVar(&assembleOutput, "output", "", "Output PDF path (default: <config-name>.pdf)")
+	assembleCmd.Flags().BoolVar(&assembleVerbose, "verbose", false, "Show which image is picked for each page")
+	assembleCmd.Flags().BoolVar(&assembleList, "list", false, "Show selection without generating PDF")
+}
 
-	configFile := fs.String("config", defaultConfig, "Config `FILE` for output_dir and 'selected' overrides")
-	inputDir := fs.String("input", "", "Directory containing page images (default: output_dir from config)")
-	output := fs.String("output", "", "Output PDF path (default: <config-name>.pdf)")
-	verbose := fs.Bool("verbose", false, "Show which image is picked for each page")
-	listOnly := fs.Bool("list", false, "Show selection without generating PDF")
-
-	if err := fs.Parse(args); err != nil {
-		os.Exit(1)
-	}
-
-	cfg, resolvedInput, resolvedOutput := resolveAssemblePaths(*configFile, *inputDir, *output)
+// runAssemble is the shared implementation called by assembleCmd and batchCmd.
+func runAssemble(configFile, inputDir, output string, verbose, listOnly bool) {
+	cfg, resolvedInput, resolvedOutput := resolveAssemblePaths(configFile, inputDir, output)
 
 	best, err := findBestImages(resolvedInput)
 	if err != nil {
@@ -62,16 +66,16 @@ OPTIONS
 	}
 
 	if len(best) == 0 {
-		fatalf("no page images found in %s", *inputDir)
+		fatalf("no page images found in %s", resolvedInput)
 	}
 
 	for _, c := range best {
-		if *verbose || *listOnly {
+		if verbose || listOnly {
 			fmt.Printf("  Page %3d: %s\n", c.page, filepath.Base(c.path))
 		}
 	}
 
-	if *listOnly {
+	if listOnly {
 		return
 	}
 

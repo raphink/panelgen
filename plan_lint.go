@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,7 +12,7 @@ import (
 )
 
 // isValidSize checks gpt-image-2 size constraints:
-// both dimensions divisible by 16, total pixels ≤ 8,294,400.
+// both dimensions divisible by 16, total pixels <= 8,294,400.
 func isValidSize(s string) bool {
 	var w, h int
 	if _, err := fmt.Sscanf(s, "%dx%d", &w, &h); err != nil || w <= 0 || h <= 0 {
@@ -31,107 +30,6 @@ var validQualities = map[string]bool{
 type lintIssue struct {
 	level string
 	msg   string
-}
-
-func cmdLint(args []string) {
-	fs := flag.NewFlagSet("lint", flag.ExitOnError)
-	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, `Usage: panelgen lint [options]
-
-Validate config shape, scene/character references, and local file paths.
-
-OPTIONS
-`)
-		fs.PrintDefaults()
-	}
-
-	configFile := fs.String("config", defaultConfig, "Config `FILE`")
-	styleFile := fs.String("style", "", "Style guide text `FILE`")
-	noStyle := fs.Bool("no-style", false, "Disable style guide checks")
-	strict := fs.Bool("strict", false, "Treat warnings as errors")
-
-	if err := fs.Parse(args); err != nil {
-		os.Exit(1)
-	}
-
-	cfg, configDir := mustLoadConfig(*configFile)
-	issues := lintConfig(cfg, configDir, *styleFile, *noStyle)
-
-	errors := 0
-	warnings := 0
-	for _, i := range issues {
-		fmt.Fprintf(os.Stderr, "%s: %s\n", strings.ToUpper(i.level), i.msg)
-		if i.level == "error" {
-			errors++
-		} else {
-			warnings++
-		}
-	}
-
-	fmt.Fprintf(os.Stderr, "\nLint summary: %d error(s), %d warning(s)\n", errors, warnings)
-	if errors > 0 || (*strict && warnings > 0) {
-		os.Exit(1)
-	}
-}
-
-func cmdPlan(args []string) {
-	fs := flag.NewFlagSet("plan", flag.ExitOnError)
-	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, `Usage: panelgen plan [options]
-
-Preview batch generation: resolved outputs, refs, and prompts (optional).
-No API calls are made.
-
-OPTIONS
-`)
-		fs.PrintDefaults()
-	}
-
-	configFile := fs.String("config", defaultConfig, "Config `FILE`")
-	styleFile := fs.String("style", "", "Style guide text `FILE`")
-	noStyle := fs.Bool("no-style", false, "Disable style guide")
-	size := fs.String("size", "", "Override image size for all panels")
-	quality := fs.String("quality", "", "Override image quality for all panels")
-	pages := fs.String("pages", "", "Page subset, e.g. '1,3,5-10,20'")
-	force := fs.Bool("force", false, "Show a new version even if output exists")
-	showPrompt := fs.Bool("show-prompt", false, "Show full resolved prompt per panel")
-	showRefs := fs.Bool("show-refs", false, "List all resolved refs per panel")
-
-	if err := fs.Parse(args); err != nil {
-		os.Exit(1)
-	}
-
-	cfg, configDir := mustLoadConfig(*configFile)
-	resolvedStyle := resolveStyle(*styleFile, *noStyle, cfg, configDir)
-
-	if *size != "" && !isValidSize(*size) {
-		fatalf("invalid --size %q (must be WxH with both dimensions divisible by 16 and ≤8,294,400 total pixels)", *size)
-	}
-	if *quality != "" && !validQualities[*quality] {
-		fatalf("invalid --quality %q (expected one of: low, medium, high)", *quality)
-	}
-
-	panels := filterPanelsByPage(cfg.Panels, *pages)
-	if len(panels) == 0 {
-		fatalf("no panels to plan")
-	}
-
-	outputDir := filepath.Join(configDir, cfg.OutputDir)
-	_ = os.MkdirAll(outputDir, 0755)
-
-	total := len(panels)
-	planned, skipped, invalid := 0, 0, 0
-
-	for i, panel := range panels {
-		idx := i + 1
-		result := planOnePanel(panel, cfg, configDir, outputDir, *size, *quality, resolvedStyle, *force)
-		planned, skipped, invalid = printPlanResult(result, panel, idx, total, *showRefs, *showPrompt, planned, skipped, invalid)
-	}
-
-	fmt.Fprintf(os.Stdout, "\nPlan summary: %d planned, %d skipped, %d invalid (of %d)\n", planned, skipped, invalid, total)
-	if invalid > 0 {
-		os.Exit(1)
-	}
 }
 
 func filterPanelsByPage(panels []config.Panel, pagesFlag string) []config.Panel {
@@ -264,7 +162,7 @@ func lintConfig(cfg *config.Config, configDir, styleFlag string, noStyle bool) [
 		issues = append(issues, lintIssue{level: level, msg: msg})
 	}
 	lintDefaults(cfg, add)
-	lintStyle(cfg, configDir, styleFlag, noStyle, add)
+	lintStyleCheck(cfg, configDir, styleFlag, noStyle, add)
 	lintCharacters(cfg, configDir, add)
 	lintScenes(cfg, configDir, add)
 	lintPanels(cfg, configDir, add)
@@ -273,14 +171,14 @@ func lintConfig(cfg *config.Config, configDir, styleFlag string, noStyle bool) [
 
 func lintDefaults(cfg *config.Config, add func(string, string)) {
 	if cfg.Defaults.Size != "" && !isValidSize(cfg.Defaults.Size) {
-		add("warning", fmt.Sprintf("defaults.size %q is invalid (must be WxH, both dims divisible by 16, ≤8,294,400 px)", cfg.Defaults.Size))
+		add("warning", fmt.Sprintf("defaults.size %q is invalid (must be WxH, both dims divisible by 16, <=8,294,400 px)", cfg.Defaults.Size))
 	}
 	if cfg.Defaults.Quality != "" && !validQualities[cfg.Defaults.Quality] {
 		add("warning", fmt.Sprintf("defaults.quality %q is non-standard", cfg.Defaults.Quality))
 	}
 }
 
-func lintStyle(cfg *config.Config, configDir, styleFlag string, noStyle bool, add func(string, string)) {
+func lintStyleCheck(cfg *config.Config, configDir, styleFlag string, noStyle bool, add func(string, string)) {
 	if noStyle {
 		return
 	}
@@ -314,7 +212,7 @@ func lintScenes(cfg *config.Config, configDir string, add func(string, string)) 
 	for _, name := range sceneNames {
 		s := cfg.Scenes[name]
 		if s.Size != "" && !isValidSize(s.Size) {
-			add("warning", fmt.Sprintf("scene %q size %q is invalid (must be WxH, both dims divisible by 16, ≤8,294,400 px)", name, s.Size))
+			add("warning", fmt.Sprintf("scene %q size %q is invalid (must be WxH, both dims divisible by 16, <=8,294,400 px)", name, s.Size))
 		}
 		if s.Quality != "" && !validQualities[s.Quality] {
 			add("warning", fmt.Sprintf("scene %q quality %q is non-standard", name, s.Quality))
