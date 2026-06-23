@@ -451,13 +451,18 @@ Output: <characters_dir>/<name>-<N>.png`,
 				continue
 			}
 
-			// Resolve character refs to absolute paths.
+			// Use the latest generated version as the ref if one exists,
+			// otherwise fall back to the YAML refs.
 			var refs []string
-			for _, r := range char.Refs {
-				if filepath.IsAbs(r) {
-					refs = append(refs, r)
-				} else {
-					refs = append(refs, filepath.Join(configDir, r))
+			if latest := latestCharacterRef(resolvedOutput, name); latest != "" {
+				refs = []string{latest}
+			} else {
+				for _, r := range char.Refs {
+					if filepath.IsAbs(r) {
+						refs = append(refs, r)
+					} else {
+						refs = append(refs, filepath.Join(configDir, r))
+					}
 				}
 			}
 
