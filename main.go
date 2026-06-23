@@ -398,10 +398,11 @@ var charactersListCmd = &cobra.Command{
 }
 
 var (
-	charsGenOutputDir string
-	charsGenSize      string
-	charsGenQuality   string
-	charsGenAll       bool
+	charsGenOutputDir  string
+	charsGenSize       string
+	charsGenQuality    string
+	charsGenAll        bool
+	charsGenShowPrompt bool
 )
 
 var charactersGenerateCmd = &cobra.Command{
@@ -434,17 +435,21 @@ Output: <characters_dir>/<name>-<N>.png`,
 		if resolvedOutput == "" {
 			resolvedOutput = filepath.Join(configDir, "characters")
 		}
-		if err := os.MkdirAll(resolvedOutput, 0755); err != nil {
-			fatalf("create output dir: %v", err)
-		}
 
 		resolvedStyle := resolveStyle(styleFile, noStyle, cfg, configDir)
 		finalSize := firstNonEmpty(charsGenSize, cfg.Defaults.Size, "1024x1024")
 		finalQuality := firstNonEmpty(charsGenQuality, cfg.Defaults.Quality, "high")
 
-		client, err := api.NewClientFromEnv()
-		if err != nil {
-			fatalf("%v", err)
+		var client *api.Client
+		if !charsGenShowPrompt {
+			if err := os.MkdirAll(resolvedOutput, 0755); err != nil {
+				fatalf("create output dir: %v", err)
+			}
+			var err error
+			client, err = api.NewClientFromEnv()
+			if err != nil {
+				fatalf("%v", err)
+			}
 		}
 
 		failed := 0
@@ -454,10 +459,42 @@ Output: <characters_dir>/<name>-<N>.png`,
 				fmt.Fprintf(os.Stderr, "  %s: skipping (no prompt)\n", name)
 				continue
 			}
+
+			// Resolve character refs to absolute paths.
+			var refs []string
+			for _, r := range char.Refs {
+				if filepath.IsAbs(r) {
+					refs = append(refs, r)
+				} else {
+					refs = append(refs, filepath.Join(configDir, r))
+				}
+			}
+
+			if charsGenShowPrompt {
+				prompt, err := generate.BuildPrompt(char.Prompt, resolvedStyle, "")
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "  %s: build prompt error: %v\n", name, err)
+					failed++
+					continue
+				}
+				fmt.Printf("=== %s ===\n", name)
+				fmt.Printf("size   : %s\nquality: %s\nrefs   : %d\n", finalSize, finalQuality, len(refs))
+				for _, r := range refs {
+					fmt.Printf("  - %s\n", r)
+				}
+				fmt.Printf("prompt :\n")
+				for _, line := range strings.Split(prompt, "\n") {
+					fmt.Printf("  %s\n", line)
+				}
+				fmt.Println()
+				continue
+			}
+
 			output := nextCharacterVersion(resolvedOutput, name)
 			if err := generate.Run(client, generate.Options{
 				Prompt:    char.Prompt,
 				StyleFile: resolvedStyle,
+				Refs:      refs,
 				Output:    output,
 				Size:      finalSize,
 				Quality:   finalQuality,
@@ -479,6 +516,7 @@ func init() {
 	charactersGenerateCmd.Flags().StringVar(&charsGenSize, "size", "", "Image size (overrides defaults)")
 	charactersGenerateCmd.Flags().StringVar(&charsGenQuality, "quality", "", "Image quality (overrides defaults)")
 	charactersGenerateCmd.Flags().BoolVar(&charsGenAll, "all", false, "Generate all characters")
+	charactersGenerateCmd.Flags().BoolVar(&charsGenShowPrompt, "show-prompt", false, "Print resolved prompt and refs without calling the API")
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
