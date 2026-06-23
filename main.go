@@ -397,12 +397,15 @@ var charactersListCmd = &cobra.Command{
 	},
 }
 
+const defaultCharacterPreprompt = "Full body portrait on a plain solid-color background. Character reference sheet."
+
 var (
 	charsGenOutputDir  string
 	charsGenSize       string
 	charsGenQuality    string
 	charsGenAll        bool
 	charsGenShowPrompt bool
+	charsGenPreprompt  string
 )
 
 var charactersGenerateCmd = &cobra.Command{
@@ -439,6 +442,7 @@ Output: <characters_dir>/<name>-<N>.png`,
 		resolvedStyle := resolveStyle(styleFile, noStyle, cfg, configDir)
 		finalSize := firstNonEmpty(charsGenSize, cfg.Defaults.Size, "1024x1024")
 		finalQuality := firstNonEmpty(charsGenQuality, cfg.Defaults.Quality, "high")
+		preprompt := firstNonEmpty(charsGenPreprompt, cfg.Defaults.CharactersPreprompt, defaultCharacterPreprompt)
 
 		var client *api.Client
 		if !charsGenShowPrompt {
@@ -471,7 +475,7 @@ Output: <characters_dir>/<name>-<N>.png`,
 			}
 
 			if charsGenShowPrompt {
-				prompt, err := generate.BuildPrompt(char.Prompt, resolvedStyle, "")
+				prompt, err := generate.BuildPrompt(char.Prompt, resolvedStyle, preprompt)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "  %s: build prompt error: %v\n", name, err)
 					failed++
@@ -492,12 +496,13 @@ Output: <characters_dir>/<name>-<N>.png`,
 
 			output := nextCharacterVersion(resolvedOutput, name)
 			if err := generate.Run(client, generate.Options{
-				Prompt:    char.Prompt,
-				StyleFile: resolvedStyle,
-				Refs:      refs,
-				Output:    output,
-				Size:      finalSize,
-				Quality:   finalQuality,
+				Prompt:      char.Prompt,
+				StyleFile:   resolvedStyle,
+				ScenePrefix: preprompt,
+				Refs:        refs,
+				Output:      output,
+				Size:        finalSize,
+				Quality:     finalQuality,
 			}); err != nil {
 				fmt.Fprintf(os.Stderr, "  %s FAILED: %v\n", name, err)
 				failed++
@@ -517,6 +522,7 @@ func init() {
 	charactersGenerateCmd.Flags().StringVar(&charsGenQuality, "quality", "", "Image quality (overrides defaults)")
 	charactersGenerateCmd.Flags().BoolVar(&charsGenAll, "all", false, "Generate all characters")
 	charactersGenerateCmd.Flags().BoolVar(&charsGenShowPrompt, "show-prompt", false, "Print resolved prompt and refs without calling the API")
+	charactersGenerateCmd.Flags().StringVar(&charsGenPreprompt, "preprompt", "", "Preprompt prefix for character generation (default: solid-background reference sheet instruction)")
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

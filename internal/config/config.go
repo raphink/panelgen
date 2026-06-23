@@ -21,10 +21,11 @@ type Config struct {
 }
 
 type Defaults struct {
-	Size          string `yaml:"size"`
-	Quality       string `yaml:"quality"`
-	Assemble      *bool  `yaml:"assemble"`
-	CharactersDir string `yaml:"characters_dir"`
+	Size                string `yaml:"size"`
+	Quality             string `yaml:"quality"`
+	Assemble            *bool  `yaml:"assemble"`
+	CharactersDir       string `yaml:"characters_dir"`
+	CharactersPreprompt string `yaml:"characters_preprompt"`
 }
 
 type Character struct {
