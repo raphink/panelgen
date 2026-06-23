@@ -8,6 +8,10 @@ IMAGE   ?= panelgen
 build:
 	go build $(LDFLAGS) -o panelgen .
 
+## install: build and install to GOPATH/bin
+install:
+	go install $(LDFLAGS) .
+
 ## build-all: cross-compile for Linux, macOS, and Windows
 build-all:
 	mkdir -p dist
