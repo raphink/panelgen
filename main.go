@@ -98,7 +98,7 @@ ARGUMENTS
 		var sceneRefs []string
 		sceneSize, sceneQuality := "", ""
 		if genScene != "" {
-			resolved, err := generate.ResolveScene(cfg, genScene, configDir)
+			resolved, err := generate.ResolveScene(cfg, genScene, configDir, nil)
 			if err != nil {
 				fatalf("%v", err)
 			}

@@ -21,8 +21,10 @@ scenes:
   bridge:
     description: "Inside a spacecraft bridge"
     prompt_prefix: >
-      Comic panel aboard a spacecraft bridge, cinematic framing, clear
+      Comic panel aboard a spacecraft bridge, {framing}, clear
       silhouettes, consistent visual identity.
+    vars:
+      framing: "medium shot"   # default; panels can override
     characters:
       - explorer
     size: 1024x1024
@@ -30,8 +32,10 @@ scenes:
 panels:
   - page: 1
     scene: bridge
+    vars:
+      framing: "wide establishing shot"
     prompt: >
-      Explorer at the command console, focused and calm, medium shot.
+      Explorer at the command console, focused and calm.
 
   - page: 2
     scene: bridge

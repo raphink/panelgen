@@ -104,7 +104,7 @@ func TestHasVersion_True(t *testing.T) {
 
 func TestResolveScene_UnknownScene(t *testing.T) {
 	cfg := &config.Config{Scenes: map[string]config.Scene{}}
-	_, err := ResolveScene(cfg, "missing", ".")
+	_, err := ResolveScene(cfg, "missing", ".", nil)
 	if err == nil {
 		t.Fatal("expected error for unknown scene")
 	}
@@ -117,7 +117,7 @@ func TestResolveScene_Basic(t *testing.T) {
 		},
 		Characters: map[string]config.Character{},
 	}
-	r, err := ResolveScene(cfg, "space", "/base")
+	r, err := ResolveScene(cfg, "space", "/base", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestResolveScene_CharacterDescriptionInPrefix(t *testing.T) {
 			"fox": {Prompt: "Clockwork fox in a white space suit."},
 		},
 	}
-	r, err := ResolveScene(cfg, "s", ".")
+	r, err := ResolveScene(cfg, "s", ".", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestResolveScene_MultipleCharacterDescriptions(t *testing.T) {
 			"wolf": {Prompt: "Steel wolf."},
 		},
 	}
-	r, err := ResolveScene(cfg, "s", ".")
+	r, err := ResolveScene(cfg, "s", ".", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestResolveScene_NoDescriptionNoChange(t *testing.T) {
 			"fox": {Prompt: ""},
 		},
 	}
-	r, err := ResolveScene(cfg, "s", ".")
+	r, err := ResolveScene(cfg, "s", ".", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestResolveScene_CharacterRefsDeduped(t *testing.T) {
 			"fox": {Refs: []string{"fox.png"}},
 		},
 	}
-	r, err := ResolveScene(cfg, "s", dir)
+	r, err := ResolveScene(cfg, "s", dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,6 +234,38 @@ func TestFilterByPageSet_Empty(t *testing.T) {
 	got := filterByPageSet(panels, []int{99})
 	if len(got) != 0 {
 		t.Errorf("expected empty, got %v", got)
+	}
+}
+
+// ─── applyVars ───────────────────────────────────────────────────────────────
+
+func TestApplyVars_SceneDefaults(t *testing.T) {
+	got := applyVars("Panel in {setting}.", map[string]string{"setting": "a forest"}, nil)
+	if got != "Panel in a forest." {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestApplyVars_PanelOverride(t *testing.T) {
+	got := applyVars("Panel in {setting}.",
+		map[string]string{"setting": "a forest"},
+		map[string]string{"setting": "a cave"})
+	if got != "Panel in a cave." {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestApplyVars_NoVars(t *testing.T) {
+	got := applyVars("No placeholders.", nil, nil)
+	if got != "No placeholders." {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestApplyVars_UnreplacedPlaceholder(t *testing.T) {
+	got := applyVars("Hello {unknown}.", map[string]string{"other": "x"}, nil)
+	if got != "Hello {unknown}." {
+		t.Errorf("got %q", got)
 	}
 }
 

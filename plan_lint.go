@@ -105,7 +105,7 @@ func planOnePanel(panel config.Panel, cfg *config.Config, configDir, outputDir, 
 	var sceneRefs []string
 	sceneSize, sceneQuality := "", ""
 	if panel.Scene != "" {
-		resolved, err := generate.ResolveScene(cfg, panel.Scene, configDir)
+		resolved, err := generate.ResolveScene(cfg, panel.Scene, configDir, panel.Vars)
 		if err != nil {
 			return panelPlanResult{status: "invalid", err: err}
 		}

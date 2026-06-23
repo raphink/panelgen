@@ -157,7 +157,7 @@ func latestCharacterRef(dir, name string) string {
 	return best
 }
 
-func ResolveScene(cfg *config.Config, sceneName string, configDir string) (*ResolvedScene, error) {
+func ResolveScene(cfg *config.Config, sceneName string, configDir string, panelVars map[string]string) (*ResolvedScene, error) {
 	scene, ok := cfg.Scenes[sceneName]
 	if !ok {
 		names := make([]string, 0, len(cfg.Scenes))
@@ -193,7 +193,7 @@ func ResolveScene(cfg *config.Config, sceneName string, configDir string) (*Reso
 		if prefix != "" {
 			prefix += "\n\n"
 		}
-		prefix += strings.TrimSpace(scene.PromptPrefix)
+		prefix += applyVars(strings.TrimSpace(scene.PromptPrefix), scene.Vars, panelVars)
 	}
 
 	return &ResolvedScene{
@@ -202,6 +202,24 @@ func ResolveScene(cfg *config.Config, sceneName string, configDir string) (*Reso
 		Size:    scene.Size,
 		Quality: scene.Quality,
 	}, nil
+}
+
+// applyVars substitutes {key} placeholders using scene defaults overridden by panel vars.
+func applyVars(s string, sceneVars, panelVars map[string]string) string {
+	if len(sceneVars) == 0 && len(panelVars) == 0 {
+		return s
+	}
+	merged := make(map[string]string, len(sceneVars)+len(panelVars))
+	for k, v := range sceneVars {
+		merged[k] = v
+	}
+	for k, v := range panelVars {
+		merged[k] = v
+	}
+	for k, v := range merged {
+		s = strings.ReplaceAll(s, "{"+k+"}", v)
+	}
+	return s
 }
 
 // ─── Single image generation ──────────────────────────────────────────────────
@@ -475,7 +493,7 @@ func resolvePanel(cfg *config.Config, opts BatchOptions, panel config.Panel, idx
 	if panel.Scene == "" {
 		return "", nil, "", "", false
 	}
-	resolved, err := ResolveScene(cfg, panel.Scene, opts.ConfigDir)
+	resolved, err := ResolveScene(cfg, panel.Scene, opts.ConfigDir, panel.Vars)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[%d/%d] Page %d: %v — skipping\n", idx, total, panel.Page, err)
 		return "", nil, "", "", true

@@ -34,22 +34,24 @@ type Character struct {
 }
 
 type Scene struct {
-	Description  string   `yaml:"description"`
-	PromptPrefix string   `yaml:"prompt_prefix"`
-	Characters   []string `yaml:"characters"`
-	Refs         []string `yaml:"refs"`
-	Size         string   `yaml:"size"`
-	Quality      string   `yaml:"quality"`
+	Description  string            `yaml:"description"`
+	PromptPrefix string            `yaml:"prompt_prefix"`
+	Characters   []string          `yaml:"characters"`
+	Refs         []string          `yaml:"refs"`
+	Size         string            `yaml:"size"`
+	Quality      string            `yaml:"quality"`
+	Vars         map[string]string `yaml:"vars"`
 }
 
 type Panel struct {
-	Page       int      `yaml:"page"`
-	Scene      string   `yaml:"scene"`
-	Characters []string `yaml:"characters"`
-	Prompt     string   `yaml:"prompt"`
-	Refs       []string `yaml:"refs"`
-	Continue   int      `yaml:"continue"`
-	Selected   string   `yaml:"selected"`
+	Page       int               `yaml:"page"`
+	Scene      string            `yaml:"scene"`
+	Characters []string          `yaml:"characters"`
+	Prompt     string            `yaml:"prompt"`
+	Refs       []string          `yaml:"refs"`
+	Continue   int               `yaml:"continue"`
+	Vars       map[string]string `yaml:"vars"`
+	Selected   string            `yaml:"selected"`
 }
 
 // Load reads a panelgen YAML config file, recursively merging any imports.

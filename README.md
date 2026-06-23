@@ -188,6 +188,7 @@ panelgen batch --config panelgen.yml
 `examples/panelgen-advanced.yml` demonstrates:
 - `continue: N` to carry the best generated image for page N as a ref into the next panel
 - panel-level `characters:` to add a character for one panel without changing scene defaults
+- scene `vars:` with defaults overridden per-panel via `{placeholder}` substitution
 
 ## Config format
 
@@ -218,7 +219,9 @@ scenes:
     description: "Single character floating in space"
     prompt_prefix: >
       Comic panel in outer space with purple/blue starry background.
-      Square panel with rounded corners.
+      {framing}
+    vars:
+      framing: "Square panel with rounded corners."
     characters:
       - explorer
     size: 1024x1024
@@ -232,9 +235,13 @@ panels:
   - page: 2
     scene: space-solo
     continue: 1   # passes the best generated image for page 1 as a reference
+    vars:
+      framing: "Wide shot, character small against the void."
     prompt: >
       Character looking shocked at an exploding pod.
 ```
+
+`{placeholder}` values in `prompt_prefix` are substituted at generation time. Scene `vars:` provide defaults; panel `vars:` override them per-panel.
 
 ### Output versioning
 
