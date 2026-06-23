@@ -35,21 +35,8 @@ func main() {
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
 var rootCmd = &cobra.Command{
-	Use:   "panelgen",
-	Short: "panelgen — AI image series generator",
-	Long: `panelgen — AI image series generator
-
-COMMANDS
-  generate              Generate a single image
-  batch                 Generate all panels from a config file
-  plan                  Show what batch would generate without API calls
-  lint                  Validate config and local file references
-  scenes                List scenes defined in a config file
-  characters list       List characters and their prompts
-  characters generate   Generate character reference images
-  assemble              Assemble generated images into a PDF
-
-Run 'panelgen COMMAND --help' for command-specific options.`,
+	Use:     "panelgen",
+	Short:   "AI image series generator",
 	Version: version,
 }
 
