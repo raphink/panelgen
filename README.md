@@ -163,6 +163,10 @@ panelgen characters generate --all --output-dir refs/chars --quality low
 Output files are versioned: `characters/explorer-1.png`, `characters/explorer-2.png`, etc.
 The output directory defaults to `characters/` next to the config, or `defaults.characters_dir` if set.
 
+Once character images exist, `batch` and `plan` automatically use the latest generated image as the
+character ref in panel prompts — no YAML change needed. `characters generate` always uses the
+original `refs:` from the config to regenerate from the source concept.
+
 ### Starter example files
 
 ```bash
@@ -182,8 +186,8 @@ panelgen batch --config panelgen.yml
 ```
 
 `examples/panelgen-advanced.yml` demonstrates:
-- using one panel output as a ref for a later panel to preserve continuity
-- adding a panel-specific character via panel-level refs without changing scene defaults
+- `continue: N` to carry the best generated image for page N as a ref into the next panel
+- panel-level `characters:` to add a character for one panel without changing scene defaults
 
 ## Config format
 
@@ -198,7 +202,8 @@ defaults:
   size: 1024x1024         # Any WxH where both dims are divisible by 16 and total ≤ 8,294,400 px
   quality: low
   assemble: true          # Automatically assemble a PDF after every batch run
-  characters_dir: refs/chars  # Output directory for generated character images (default: characters/)
+  characters_dir: refs/chars          # Output directory for generated character images (default: characters/)
+  characters_preprompt: "..."         # Preprompt for character generation (default: solid-background reference sheet)
 
 output_dir: generated/
 
@@ -226,6 +231,7 @@ panels:
 
   - page: 2
     scene: space-solo
+    continue: 1   # passes the best generated image for page 1 as a reference
     prompt: >
       Character looking shocked at an exploding pod.
 ```

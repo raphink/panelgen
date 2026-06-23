@@ -10,7 +10,7 @@ characters:
   explorer:
     prompt: "Clockwork fox explorer in white spacesuit"
     refs:
-      - refs/clockwork-fox.png
+      - refs/clockwork-fox.png   # concept art; replaced by generated images once available
 
   sidekick:
     prompt: "Small helper robot with a single blue lens"
@@ -19,7 +19,7 @@ characters:
 
 scenes:
   bridge:
-    prompt: "Inside a spacecraft bridge"
+    description: "Inside a spacecraft bridge"
     prompt_prefix: >
       Comic panel aboard a spacecraft bridge, cinematic framing, clear
       silhouettes, consistent visual identity.
@@ -35,16 +35,16 @@ panels:
 
   - page: 2
     scene: bridge
-    refs:
-      - generated/page_1_high-1.png
+    continue: 1   # use the best generated image for page 1 as a reference
     prompt: >
       Explorer in the same position moments later, alarm lights now active.
       Keep pose and framing consistent with previous panel.
 
   - page: 3
     scene: bridge
-    refs:
-      - refs/robot-sidekick.png
+    continue: 2
+    characters:
+      - sidekick   # sidekick not in the scene by default; added here for this panel only
     prompt: >
-      Same bridge scene and explorer, but the sidekick robot enters frame.
-      Keep explorer design consistent and place robot in the foreground.
+      Same bridge scene, sidekick robot enters frame in the foreground.
+      Keep explorer design consistent with previous panel.
