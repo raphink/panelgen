@@ -364,7 +364,7 @@ func lintPanels(cfg *config.Config, configDir string, add func(string, string)) 
 	}
 	seenPages := map[int]int{}
 	for i, p := range cfg.Panels {
-		if p.Page <= 0 {
+		if p.Page < 0 {
 			add("error", fmt.Sprintf("panel[%d] has invalid page number: %d", i, p.Page))
 		} else if first, ok := seenPages[p.Page]; ok {
 			add("error", fmt.Sprintf("panel[%d] duplicates page %d already used by panel[%d]", i, p.Page, first))

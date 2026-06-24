@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/raphink/panelgen/internal/config"
@@ -133,9 +134,20 @@ func TestLintConfig_PanelEmptyPrompt(t *testing.T) {
 
 func TestLintConfig_PanelInvalidPage(t *testing.T) {
 	cfg := minimalConfig()
-	cfg.Panels[0].Page = 0
+	cfg.Panels[0].Page = -1
 	issues := lintConfig(cfg, ".", "", true)
 	assertIssue(t, issues, "error", "invalid page number")
+}
+
+func TestLintConfig_PageZeroIsValid(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.Panels[0].Page = 0
+	issues := lintConfig(cfg, ".", "", true)
+	for _, iss := range issues {
+		if strings.Contains(iss.msg, "invalid page number") {
+			t.Errorf("page 0 should be valid, got error: %s", iss.msg)
+		}
+	}
 }
 
 func TestLintConfig_DuplicatePage(t *testing.T) {
