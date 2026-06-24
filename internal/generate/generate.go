@@ -587,12 +587,13 @@ func logItemStart(item workItem) {
 	if item.scene != "" {
 		scene = ui.Sep() + ui.Dim(item.scene)
 	}
+	spec := ui.Dim(item.size + ui.Sep() + item.quality)
 	refs := ""
 	if len(item.refs) > 0 {
 		refs = ui.Dim(fmt.Sprintf(" (%d ref(s))", len(item.refs)))
 	}
-	fmt.Fprintf(os.Stderr, "%s %s %s%s%s\n",
+	fmt.Fprintf(os.Stderr, "%s %s %s%s%s%s%s\n",
 		fmtIdx(item.index, item.total), ui.IconGen,
 		ui.Bold(fmt.Sprintf("Page %d", item.pageNum)),
-		scene, refs)
+		scene, ui.Sep(), spec, refs)
 }
