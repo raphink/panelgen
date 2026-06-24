@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/raphink/panelgen/internal/config"
-	"github.com/raphink/panelgen/internal/ui"
 	"github.com/raphink/panelgen/internal/generate"
+	"github.com/raphink/panelgen/internal/ui"
 )
 
 // isValidSize checks gpt-image-2 size constraints:

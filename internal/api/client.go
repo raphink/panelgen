@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -289,12 +290,12 @@ func parseImageResponse(body []byte) ([]byte, error) {
 }
 
 func mimeFromExt(ext string) string {
-	switch strings.ToLower(ext) {
-	case ".jpg", ".jpeg":
-		return "image/jpeg"
-	case ".webp":
-		return "image/webp"
-	default:
-		return "image/png"
+	if t := mime.TypeByExtension(strings.ToLower(ext)); t != "" {
+		// Strip parameters (e.g. "image/jpeg; charset=...") — API expects bare type.
+		if i := strings.IndexByte(t, ';'); i >= 0 {
+			t = strings.TrimSpace(t[:i])
+		}
+		return t
 	}
+	return "image/png"
 }

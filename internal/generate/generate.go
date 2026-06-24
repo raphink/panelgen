@@ -40,44 +40,36 @@ func BuildPrompt(userPrompt string, styleFile string, scenePrefix string) (strin
 
 // ─── Versioned output ─────────────────────────────────────────────────────────
 
+var (
+	versionSuffixRe = regexp.MustCompile(`-(\d+)\.png$`)
+	// PageFileRe matches page_<N>_<quality>-<version>.png filenames.
+	// Groups: 1=quality, 2=version.
+	PageFileRe  = regexp.MustCompile(`^page_(\d+)_(low|medium|high)-(\d+)\.png$`)
+	QualityRank = map[string]int{"high": 3, "medium": 2, "low": 1}
+)
+
 func NextVersion(outputDir string, pageNum int, quality string) string {
 	pattern := filepath.Join(outputDir, fmt.Sprintf("page_%d_%s-*.png", pageNum, quality))
-	matches, _ := filepath.Glob(pattern)
-
-	if len(matches) == 0 {
-		return filepath.Join(outputDir, fmt.Sprintf("page_%d_%s-1.png", pageNum, quality))
-	}
-
-	re := regexp.MustCompile(`-(\d+)\.png$`)
-	max := 0
-	for _, m := range matches {
-		if sub := re.FindStringSubmatch(m); sub != nil {
-			if n, err := strconv.Atoi(sub[1]); err == nil && n > max {
-				max = n
-			}
-		}
-	}
-	return filepath.Join(outputDir, fmt.Sprintf("page_%d_%s-%d.png", pageNum, quality, max+1))
+	n, _ := scanVersions(pattern)
+	return filepath.Join(outputDir, fmt.Sprintf("page_%d_%s-%d.png", pageNum, quality, n+1))
 }
 
 // BestPageImage returns the path of the best existing image for a page:
 // highest quality (high > medium > low) then highest increment.
 // Returns "" if no image exists for that page.
 func BestPageImage(outputDir string, pageNum int) string {
-	qualityRank := map[string]int{"high": 3, "medium": 2, "low": 1}
-	re := regexp.MustCompile(`^page_\d+_(low|medium|high)-(\d+)\.png$`)
 	best, bestQ, bestN := "", 0, 0
 	for _, q := range []string{"high", "medium", "low"} {
 		pattern := filepath.Join(outputDir, fmt.Sprintf("page_%d_%s-*.png", pageNum, q))
 		matches, _ := filepath.Glob(pattern)
 		for _, m := range matches {
-			sub := re.FindStringSubmatch(filepath.Base(m))
+			sub := PageFileRe.FindStringSubmatch(filepath.Base(m))
 			if sub == nil {
 				continue
 			}
 			n, _ := strconv.Atoi(sub[2])
-			if qualityRank[q] > bestQ || (qualityRank[q] == bestQ && n > bestN) {
-				best, bestQ, bestN = m, qualityRank[q], n
+			if QualityRank[q] > bestQ || (QualityRank[q] == bestQ && n > bestN) {
+				best, bestQ, bestN = m, QualityRank[q], n
 			}
 		}
 	}
@@ -143,20 +135,29 @@ func ResolveCharacters(cfg *config.Config, names []string, configDir string) (pr
 	return
 }
 
-var charVersionRe = regexp.MustCompile(`-(\d+)\.png$`)
-
-// latestCharacterRef returns the highest-numbered <name>-N.png in dir, or "" if none exist.
-func latestCharacterRef(dir, name string) string {
-	matches, _ := filepath.Glob(filepath.Join(dir, name+"-*.png"))
-	best, max := "", 0
+// scanVersions globs pattern, returns the highest version number found and the matching path.
+func scanVersions(pattern string) (maxN int, best string) {
+	matches, _ := filepath.Glob(pattern)
 	for _, m := range matches {
-		if sub := charVersionRe.FindStringSubmatch(m); sub != nil {
-			if n, err := strconv.Atoi(sub[1]); err == nil && n > max {
-				max, best = n, m
+		if sub := versionSuffixRe.FindStringSubmatch(m); sub != nil {
+			if n, err := strconv.Atoi(sub[1]); err == nil && n > maxN {
+				maxN, best = n, m
 			}
 		}
 	}
-	return best
+	return
+}
+
+// latestCharacterRef returns the highest-numbered <name>-N.png in dir, or "" if none exist.
+func latestCharacterRef(dir, name string) string {
+	_, path := scanVersions(filepath.Join(dir, name+"-*.png"))
+	return path
+}
+
+// NextCharacterVersion returns the path for the next version of a character image.
+func NextCharacterVersion(dir, name string) string {
+	n, _ := scanVersions(filepath.Join(dir, name+"-*.png"))
+	return filepath.Join(dir, fmt.Sprintf("%s-%d.png", name, n+1))
 }
 
 func ResolveScene(cfg *config.Config, sceneName string, configDir string, panelVars map[string]string) (*ResolvedScene, error) {
@@ -252,7 +253,7 @@ func Run(client *api.Client, opts Options) error {
 		return err
 	}
 
-	spec := ui.Dim(opts.Size+ui.Sep()+opts.Quality)
+	spec := ui.Dim(opts.Size + ui.Sep() + opts.Quality)
 	var imgData []byte
 	start := time.Now()
 	if len(opts.Refs) > 0 {

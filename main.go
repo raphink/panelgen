@@ -599,6 +599,9 @@ func parsePageSpec(spec string) ([]int, error) {
 			if err != nil {
 				return nil, fmt.Errorf("invalid range %q", part)
 			}
+			if start > end {
+				return nil, fmt.Errorf("invalid range %q: start must be <= end", part)
+			}
 			for i := start; i <= end; i++ {
 				if !seen[i] {
 					pages = append(pages, i)

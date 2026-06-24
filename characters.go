@@ -1,13 +1,10 @@
 package main
 
 import (
-	"fmt"
-	"path/filepath"
-	"regexp"
 	"sort"
-	"strconv"
 
 	"github.com/raphink/panelgen/internal/config"
+	"github.com/raphink/panelgen/internal/generate"
 )
 
 func sortedCharacterNames(cfg *config.Config) []string {
@@ -19,17 +16,6 @@ func sortedCharacterNames(cfg *config.Config) []string {
 	return names
 }
 
-var charVersionRe = regexp.MustCompile(`-(\d+)\.png$`)
-
 func nextCharacterVersion(dir, name string) string {
-	matches, _ := filepath.Glob(filepath.Join(dir, name+"-*.png"))
-	max := 0
-	for _, m := range matches {
-		if sub := charVersionRe.FindStringSubmatch(m); sub != nil {
-			if n, err := strconv.Atoi(sub[1]); err == nil && n > max {
-				max = n
-			}
-		}
-	}
-	return filepath.Join(dir, fmt.Sprintf("%s-%d.png", name, max+1))
+	return generate.NextCharacterVersion(dir, name)
 }

@@ -5,7 +5,6 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,11 +13,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/raphink/panelgen/internal/config"
+	"github.com/raphink/panelgen/internal/generate"
 )
-
-var qualityRank = map[string]int{"high": 3, "medium": 2, "low": 1}
-
-var versionedRe = regexp.MustCompile(`^page_(\d+)_(low|medium|high)-(\d+)\.png$`)
 
 type pageCandidate struct {
 	page      int
@@ -149,7 +145,7 @@ func findBestImages(dir string) ([]pageCandidate, error) {
 
 	byPage := map[int][]pageCandidate{}
 	for _, e := range entries {
-		m := versionedRe.FindStringSubmatch(e.Name())
+		m := generate.PageFileRe.FindStringSubmatch(e.Name())
 		if m == nil {
 			continue
 		}
@@ -158,7 +154,7 @@ func findBestImages(dir string) ([]pageCandidate, error) {
 		increment, _ := strconv.Atoi(m[3])
 		byPage[page] = append(byPage[page], pageCandidate{
 			page:      page,
-			quality:   qualityRank[quality],
+			quality:   generate.QualityRank[quality],
 			increment: increment,
 			path:      filepath.Join(dir, e.Name()),
 		})

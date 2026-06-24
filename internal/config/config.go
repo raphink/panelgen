@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"dario.cat/mergo"
 	"gopkg.in/yaml.v3"
 )
 
@@ -83,6 +84,7 @@ func load(absPath string, seen map[string]bool) (*Config, error) {
 	}
 
 	// Process imports first, then let cfg's own definitions override.
+	// mergo.Merge fills zero-value fields from src; maps are merged key-by-key.
 	base := &Config{
 		Scenes:     make(map[string]Scene),
 		Characters: make(map[string]Character),
@@ -101,53 +103,15 @@ func load(absPath string, seen map[string]bool) (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("import %s: %w", imp, err)
 		}
-		if base.Style == "" {
-			base.Style = imported.Style
-		}
-		if base.Defaults.Size == "" {
-			base.Defaults.Size = imported.Defaults.Size
-		}
-		if base.Defaults.Quality == "" {
-			base.Defaults.Quality = imported.Defaults.Quality
-		}
-		if base.Defaults.Assemble == nil {
-			base.Defaults.Assemble = imported.Defaults.Assemble
-		}
-		if base.Defaults.CharactersDir == "" {
-			base.Defaults.CharactersDir = imported.Defaults.CharactersDir
-		}
-		for k, v := range imported.Characters {
-			base.Characters[k] = v
-		}
-		for k, v := range imported.Scenes {
-			base.Scenes[k] = v
+		if err := mergo.Merge(base, imported); err != nil {
+			return nil, fmt.Errorf("merge import %s: %w", imp, err)
 		}
 	}
 
-	// Merge: cfg overrides base.
-	if cfg.Style == "" {
-		cfg.Style = base.Style
+	// cfg overrides base: merge base into cfg (fills only cfg's zero-value fields).
+	if err := mergo.Merge(cfg, base); err != nil {
+		return nil, fmt.Errorf("merge config: %w", err)
 	}
-	if cfg.Defaults.Size == "" {
-		cfg.Defaults.Size = base.Defaults.Size
-	}
-	if cfg.Defaults.Quality == "" {
-		cfg.Defaults.Quality = base.Defaults.Quality
-	}
-	if cfg.Defaults.Assemble == nil {
-		cfg.Defaults.Assemble = base.Defaults.Assemble
-	}
-	if cfg.Defaults.CharactersDir == "" {
-		cfg.Defaults.CharactersDir = base.Defaults.CharactersDir
-	}
-	for k, v := range cfg.Characters {
-		base.Characters[k] = v
-	}
-	for k, v := range cfg.Scenes {
-		base.Scenes[k] = v
-	}
-	cfg.Characters = base.Characters
-	cfg.Scenes = base.Scenes
 
 	if cfg.Defaults.Size == "" {
 		cfg.Defaults.Size = "1024x1024"
