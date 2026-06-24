@@ -182,6 +182,66 @@ func lintConfig(cfg *config.Config, configDir, styleFlag string, noStyle bool) [
 	return issues
 }
 
+func generationPreflightIssues(cfg *config.Config, configDir, styleFlag string, noStyle bool, sizeOverride, qualityOverride string) []lintIssue {
+	issues := lintConfig(cfg, configDir, styleFlag, noStyle)
+	add := func(level, msg string) {
+		issues = append(issues, lintIssue{level: level, msg: msg})
+	}
+	lintSizeQuality("override", sizeOverride, qualityOverride, add)
+	lintResolvedPanelOptions(cfg, sizeOverride, qualityOverride, add)
+	return issues
+}
+
+func requireNoPreflightErrors(issues []lintIssue) {
+	errors := 0
+	for _, issue := range issues {
+		if issue.level != "error" {
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.IconFail, ui.Red(issue.msg))
+		errors++
+	}
+	if errors > 0 {
+		fatalf("validation failed with %d error(s); run `panelgen lint` for the full report", errors)
+	}
+}
+
+func lintSizeQualityIssues(label, size, quality string) []lintIssue {
+	var issues []lintIssue
+	lintSizeQuality(label, size, quality, func(level, msg string) {
+		issues = append(issues, lintIssue{level: level, msg: msg})
+	})
+	return issues
+}
+
+func lintSizeQuality(label, size, quality string, add func(string, string)) {
+	if size != "" && !isValidSize(size) {
+		add("error", fmt.Sprintf("%s size %q is invalid (must be WxH, both dims divisible by 16, <=8,294,400 px)", label, size))
+	}
+	if quality != "" && !validQualities[quality] {
+		add("error", fmt.Sprintf("%s quality %q is invalid (expected one of: low, medium, high)", label, quality))
+	}
+}
+
+func lintResolvedPanelOptions(cfg *config.Config, sizeOverride, qualityOverride string, add func(string, string)) {
+	for i, p := range cfg.Panels {
+		if strings.TrimSpace(p.Prompt) == "" || p.Scene == "blank" {
+			continue
+		}
+		var scene config.Scene
+		if p.Scene != "" {
+			var ok bool
+			scene, ok = cfg.Scenes[p.Scene]
+			if !ok {
+				continue
+			}
+		}
+		size := firstNonEmpty(sizeOverride, scene.Size, cfg.Defaults.Size, "1024x1024")
+		quality := firstNonEmpty(qualityOverride, scene.Quality, cfg.Defaults.Quality, "high")
+		lintSizeQuality(fmt.Sprintf("panel[%d] page=%d resolved", i, p.Page), size, quality, add)
+	}
+}
+
 func buildContinueMap(cfg *config.Config) (pageSet map[int]bool, contOf map[int]int) {
 	pageSet = make(map[int]bool, len(cfg.Panels))
 	contOf = make(map[int]int)
@@ -301,14 +361,27 @@ func lintPanels(cfg *config.Config, configDir string, add func(string, string)) 
 		add("error", "no panels defined")
 		return
 	}
+	seenPages := map[int]int{}
 	for i, p := range cfg.Panels {
 		if p.Page <= 0 {
 			add("error", fmt.Sprintf("panel[%d] has invalid page number: %d", i, p.Page))
+		} else if first, ok := seenPages[p.Page]; ok {
+			add("error", fmt.Sprintf("panel[%d] duplicates page %d already used by panel[%d]", i, p.Page, first))
+		} else {
+			seenPages[p.Page] = i
 		}
 		if p.Scene != "" && p.Scene != "blank" {
 			if _, ok := cfg.Scenes[p.Scene]; !ok {
 				add("error", fmt.Sprintf("panel[%d] references unknown scene %q", i, p.Scene))
 			}
+		}
+		for _, charName := range p.Characters {
+			if _, ok := cfg.Characters[charName]; !ok {
+				add("error", fmt.Sprintf("panel[%d] references unknown character %q", i, charName))
+			}
+		}
+		if p.Continue < 0 {
+			add("error", fmt.Sprintf("panel[%d] has invalid continue page: %d", i, p.Continue))
 		}
 		if strings.TrimSpace(p.Prompt) == "" && p.Scene != "blank" {
 			add("warning", fmt.Sprintf("panel[%d] has empty prompt", i))

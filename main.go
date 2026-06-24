@@ -114,6 +114,9 @@ ARGUMENTS
 		if !isValidSize(finalSize) {
 			fatalf("invalid size %q (must be WxH with both dimensions divisible by 16 and ≤8,294,400 total pixels)", finalSize)
 		}
+		if !validQualities[finalQuality] {
+			fatalf("invalid quality %q (expected one of: low, medium, high)", finalQuality)
+		}
 		allRefs := append(sceneRefs, genRefs...)
 		resolvedStyle := resolveStyle(styleFile, noStyle, cfg, configDir)
 
@@ -181,6 +184,7 @@ Idempotent: skips panels that already have output at the requested quality.`,
 		}
 		configDir := filepath.Dir(configFile)
 		resolvedStyle := resolveStyle(styleFile, noStyle, cfg, configDir)
+		requireNoPreflightErrors(generationPreflightIssues(cfg, configDir, styleFile, noStyle, batchSize, batchQuality))
 
 		var pageList []int
 		if batchPages != "" {
@@ -251,13 +255,7 @@ No API calls are made.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, configDir := mustLoadConfig(configFile)
 		resolvedStyle := resolveStyle(styleFile, noStyle, cfg, configDir)
-
-		if planSize != "" && !isValidSize(planSize) {
-			fatalf("invalid --size %q (must be WxH with both dimensions divisible by 16 and ≤8,294,400 total pixels)", planSize)
-		}
-		if planQuality != "" && !validQualities[planQuality] {
-			fatalf("invalid --quality %q (expected one of: low, medium, high)", planQuality)
-		}
+		requireNoPreflightErrors(generationPreflightIssues(cfg, configDir, styleFile, noStyle, planSize, planQuality))
 
 		panels := filterPanelsByPage(cfg.Panels, planPages)
 		if len(panels) == 0 {
@@ -446,6 +444,7 @@ Output: <characters_dir>/<name>-<N>.png`,
 		resolvedStyle := resolveStyle(styleFile, noStyle, cfg, configDir)
 		finalSize := firstNonEmpty(charsGenSize, cfg.Defaults.Size, "1024x1024")
 		finalQuality := firstNonEmpty(charsGenQuality, cfg.Defaults.Quality, "high")
+		requireNoPreflightErrors(lintSizeQualityIssues("characters", finalSize, finalQuality))
 		preprompt := firstNonEmpty(charsGenPreprompt, cfg.Defaults.CharactersPreprompt, defaultCharacterPreprompt)
 
 		var client *api.Client

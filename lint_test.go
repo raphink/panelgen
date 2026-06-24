@@ -138,6 +138,23 @@ func TestLintConfig_PanelInvalidPage(t *testing.T) {
 	assertIssue(t, issues, "error", "invalid page number")
 }
 
+func TestLintConfig_DuplicatePage(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.Panels = []config.Panel{
+		{Page: 1, Prompt: "a prompt"},
+		{Page: 1, Prompt: "another prompt"},
+	}
+	issues := lintConfig(cfg, ".", "", true)
+	assertIssue(t, issues, "error", "duplicates page 1")
+}
+
+func TestLintConfig_UnknownPanelCharacter(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.Panels[0].Characters = []string{"ghost"}
+	issues := lintConfig(cfg, ".", "", true)
+	assertIssue(t, issues, "error", "unknown character")
+}
+
 func TestLintConfig_PanelMissingRef(t *testing.T) {
 	cfg := minimalConfig()
 	cfg.Panels[0].Refs = []string{"missing.png"}
@@ -173,6 +190,23 @@ func TestFilterPanelsByPage_Range(t *testing.T) {
 	if len(got) != 3 {
 		t.Errorf("expected 3, got %d: %v", len(got), got)
 	}
+}
+
+// ─── generationPreflightIssues ────────────────────────────────────────────────
+
+func TestGenerationPreflight_InvalidOverride(t *testing.T) {
+	cfg := minimalConfig()
+	issues := generationPreflightIssues(cfg, ".", "", true, "999x999", "ultra")
+	assertIssue(t, issues, "error", "override size")
+	assertIssue(t, issues, "error", "override quality")
+}
+
+func TestGenerationPreflight_InvalidResolvedSceneOption(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.Scenes["s"] = config.Scene{Size: "999x999"}
+	cfg.Panels[0].Scene = "s"
+	issues := generationPreflightIssues(cfg, ".", "", true, "", "")
+	assertIssue(t, issues, "error", "resolved size")
 }
 
 // ─── applySelectedOverrides ──────────────────────────────────────────────────
