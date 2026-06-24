@@ -214,7 +214,7 @@ Idempotent: skips panels that already have output at the requested quality.`,
 		}
 
 		if batchAssemble || (cfg.Defaults.Assemble != nil && *cfg.Defaults.Assemble) {
-			runAssemble(configFile, "", "", false, false)
+			runAssemble(configFile, batchOutputDir, "", false, false)
 		}
 		return nil
 	},
