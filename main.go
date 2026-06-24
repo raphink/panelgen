@@ -303,8 +303,8 @@ var lintCmd = &cobra.Command{
 	Short: "Validate config and local file references",
 	Long:  `Validate config shape, scene/character references, and local file paths.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, configDir := mustLoadConfig(configFile)
-		issues := lintConfig(cfg, configDir, styleFile, noStyle)
+		cfg, configDir, loadWarnings := mustLoadConfigWithWarnings(configFile)
+		issues := append(loadWarningsAsIssues(loadWarnings), lintConfig(cfg, configDir, styleFile, noStyle)...)
 
 		errors, warnings := 0, 0
 		for _, i := range issues {

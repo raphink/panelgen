@@ -55,54 +55,82 @@ type Panel struct {
 	Selected   string            `yaml:"selected"`
 }
 
+type LoadWarning struct {
+	File    string
+	Line    int
+	Message string
+}
+
+func (w LoadWarning) String() string {
+	if w.Line > 0 {
+		return fmt.Sprintf("%s:%d: %s", w.File, w.Line, w.Message)
+	}
+	return fmt.Sprintf("%s: %s", w.File, w.Message)
+}
+
 // Load reads a panelgen YAML config file, recursively merging any imports.
 func Load(path string) (*Config, error) {
+	cfg, _, err := LoadWithWarnings(path)
+	return cfg, err
+}
+
+// LoadWithWarnings reads a panelgen YAML config file and returns non-fatal
+// warnings for unknown fields in that file or any imported config.
+func LoadWithWarnings(path string) (*Config, []LoadWarning, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return nil, fmt.Errorf("resolve path %s: %w", path, err)
+		return nil, nil, fmt.Errorf("resolve path %s: %w", path, err)
 	}
 	return load(abs, map[string]bool{})
 }
 
-func load(absPath string, seen map[string]bool) (*Config, error) {
+func load(absPath string, seen map[string]bool) (*Config, []LoadWarning, error) {
 	if seen[absPath] {
-		return nil, fmt.Errorf("import cycle detected: %s", absPath)
+		return nil, nil, fmt.Errorf("import cycle detected: %s", absPath)
 	}
 	seen[absPath] = true
 
 	data, err := os.ReadFile(absPath)
 	if err != nil {
-		return nil, fmt.Errorf("open config: %w", err)
+		return nil, nil, fmt.Errorf("open config: %w", err)
 	}
+
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil {
+		return nil, nil, fmt.Errorf("parse config: %w", err)
+	}
+	warnings := collectUnknownFieldWarnings(absPath, &root)
 
 	cfg := &Config{
 		Scenes:     make(map[string]Scene),
 		Characters: make(map[string]Character),
 	}
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("parse config: %w", err)
+	if err := root.Decode(cfg); err != nil {
+		return nil, nil, fmt.Errorf("parse config: %w", err)
 	}
 
 	dir := filepath.Dir(absPath)
-	base, err := mergeImports(cfg.Imports, dir, seen)
+	base, importWarnings, err := mergeImports(cfg.Imports, dir, seen)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	warnings = append(warnings, importWarnings...)
 
 	// cfg overrides base: merge base into cfg (fills only cfg's zero-value fields).
 	if err := mergo.Merge(cfg, base); err != nil {
-		return nil, fmt.Errorf("merge config: %w", err)
+		return nil, nil, fmt.Errorf("merge config: %w", err)
 	}
 
 	applyConfigDefaults(cfg)
-	return cfg, nil
+	return cfg, warnings, nil
 }
 
-func mergeImports(imports []string, dir string, seen map[string]bool) (*Config, error) {
+func mergeImports(imports []string, dir string, seen map[string]bool) (*Config, []LoadWarning, error) {
 	base := &Config{
 		Scenes:     make(map[string]Scene),
 		Characters: make(map[string]Character),
 	}
+	var warnings []LoadWarning
 	for _, imp := range imports {
 		impPath := imp
 		if !filepath.IsAbs(impPath) {
@@ -110,17 +138,18 @@ func mergeImports(imports []string, dir string, seen map[string]bool) (*Config, 
 		}
 		impAbs, err := filepath.Abs(impPath)
 		if err != nil {
-			return nil, fmt.Errorf("resolve import %s: %w", imp, err)
+			return nil, nil, fmt.Errorf("resolve import %s: %w", imp, err)
 		}
-		imported, err := load(impAbs, seen)
+		imported, importWarnings, err := load(impAbs, seen)
 		if err != nil {
-			return nil, fmt.Errorf("import %s: %w", imp, err)
+			return nil, nil, fmt.Errorf("import %s: %w", imp, err)
 		}
+		warnings = append(warnings, importWarnings...)
 		if err := mergo.Merge(base, imported); err != nil {
-			return nil, fmt.Errorf("merge import %s: %w", imp, err)
+			return nil, nil, fmt.Errorf("merge import %s: %w", imp, err)
 		}
 	}
-	return base, nil
+	return base, warnings, nil
 }
 
 func applyConfigDefaults(cfg *Config) {
@@ -132,5 +161,118 @@ func applyConfigDefaults(cfg *Config) {
 	}
 	if cfg.OutputDir == "" {
 		cfg.OutputDir = "generated"
+	}
+}
+
+var (
+	topLevelFields  = fieldSet("imports", "style", "output_dir", "defaults", "scenes", "characters", "panels")
+	defaultFields   = fieldSet("size", "quality", "assemble", "characters_dir", "characters_preprompt")
+	characterFields = fieldSet(
+		"prompt",
+		"refs",
+	)
+	sceneFields = fieldSet(
+		"description",
+		"prompt_prefix",
+		"characters",
+		"refs",
+		"size",
+		"quality",
+		"vars",
+	)
+	panelFields = fieldSet(
+		"page",
+		"scene",
+		"characters",
+		"prompt",
+		"refs",
+		"continue",
+		"vars",
+		"selected",
+	)
+)
+
+func fieldSet(fields ...string) map[string]bool {
+	out := make(map[string]bool, len(fields))
+	for _, field := range fields {
+		out[field] = true
+	}
+	return out
+}
+
+func collectUnknownFieldWarnings(file string, root *yaml.Node) []LoadWarning {
+	doc := yamlDocument(root)
+	if doc == nil || doc.Kind != yaml.MappingNode {
+		return nil
+	}
+
+	var warnings []LoadWarning
+	warnUnknownMappingFields(file, doc, "config", topLevelFields, &warnings)
+	for _, pair := range mappingPairs(doc) {
+		switch pair.key.Value {
+		case "defaults":
+			warnUnknownMappingFields(file, pair.val, "defaults", defaultFields, &warnings)
+		case "characters":
+			warnNamedMappingValues(file, pair.val, "characters", characterFields, &warnings)
+		case "scenes":
+			warnNamedMappingValues(file, pair.val, "scenes", sceneFields, &warnings)
+		case "panels":
+			warnPanelValues(file, pair.val, &warnings)
+		}
+	}
+	return warnings
+}
+
+func yamlDocument(root *yaml.Node) *yaml.Node {
+	if root == nil {
+		return nil
+	}
+	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
+		return root.Content[0]
+	}
+	return root
+}
+
+type yamlPair struct {
+	key *yaml.Node
+	val *yaml.Node
+}
+
+func mappingPairs(node *yaml.Node) []yamlPair {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil
+	}
+	pairs := make([]yamlPair, 0, len(node.Content)/2)
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		pairs = append(pairs, yamlPair{key: node.Content[i], val: node.Content[i+1]})
+	}
+	return pairs
+}
+
+func warnUnknownMappingFields(file string, node *yaml.Node, context string, allowed map[string]bool, warnings *[]LoadWarning) {
+	for _, pair := range mappingPairs(node) {
+		if allowed[pair.key.Value] {
+			continue
+		}
+		*warnings = append(*warnings, LoadWarning{
+			File:    file,
+			Line:    pair.key.Line,
+			Message: fmt.Sprintf("unknown field %q in %s", pair.key.Value, context),
+		})
+	}
+}
+
+func warnNamedMappingValues(file string, node *yaml.Node, context string, allowed map[string]bool, warnings *[]LoadWarning) {
+	for _, pair := range mappingPairs(node) {
+		warnUnknownMappingFields(file, pair.val, context+"."+pair.key.Value, allowed, warnings)
+	}
+}
+
+func warnPanelValues(file string, node *yaml.Node, warnings *[]LoadWarning) {
+	if node == nil || node.Kind != yaml.SequenceNode {
+		return
+	}
+	for i, panel := range node.Content {
+		warnUnknownMappingFields(file, panel, fmt.Sprintf("panels[%d]", i), panelFields, warnings)
 	}
 }

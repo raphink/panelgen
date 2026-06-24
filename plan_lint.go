@@ -403,12 +403,25 @@ func lintRefs(refs []string, configDir, label string, add func(string, string)) 
 }
 
 func mustLoadConfig(configFile string) (*config.Config, string) {
+	cfg, configDir, _ := mustLoadConfigWithWarnings(configFile)
+	return cfg, configDir
+}
+
+func mustLoadConfigWithWarnings(configFile string) (*config.Config, string, []config.LoadWarning) {
 	if _, err := os.Stat(configFile); err != nil {
 		fatalf("config file not found: %s", configFile)
 	}
-	cfg, err := config.Load(configFile)
+	cfg, warnings, err := config.LoadWithWarnings(configFile)
 	if err != nil {
 		fatalf("load config: %v", err)
 	}
-	return cfg, filepath.Dir(configFile)
+	return cfg, filepath.Dir(configFile), warnings
+}
+
+func loadWarningsAsIssues(warnings []config.LoadWarning) []lintIssue {
+	issues := make([]lintIssue, 0, len(warnings))
+	for _, warning := range warnings {
+		issues = append(issues, lintIssue{level: "warning", msg: warning.String()})
+	}
+	return issues
 }

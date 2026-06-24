@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -280,4 +281,56 @@ characters:
 	if _, ok := cfg.Characters["fox"]; !ok {
 		t.Error("expected character from absolute-path import")
 	}
+}
+
+func TestLoadWithWarnings_UnknownFields(t *testing.T) {
+	dir := t.TempDir()
+	path := writeYAML(t, dir, "project.yml", `
+unknown_top: value
+characters:
+  fox:
+    description: a fox
+panels:
+  - page: 1
+    prompt: hello
+    camera: wide
+`)
+	_, warnings, err := LoadWithWarnings(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertWarning(t, warnings, `unknown field "unknown_top" in config`)
+	assertWarning(t, warnings, `unknown field "description" in characters.fox`)
+	assertWarning(t, warnings, `unknown field "camera" in panels[0]`)
+}
+
+func TestLoadWithWarnings_ImportedWarnings(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, dir, "base.yml", `
+defaults:
+  quality: high
+  unsupported: true
+`)
+	path := writeYAML(t, dir, "project.yml", `
+imports:
+  - base.yml
+panels:
+  - page: 1
+    prompt: hello
+`)
+	_, warnings, err := LoadWithWarnings(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertWarning(t, warnings, `unknown field "unsupported" in defaults`)
+}
+
+func assertWarning(t *testing.T, warnings []LoadWarning, want string) {
+	t.Helper()
+	for _, warning := range warnings {
+		if strings.Contains(warning.String(), want) {
+			return
+		}
+	}
+	t.Fatalf("expected warning containing %q; got %v", want, warnings)
 }

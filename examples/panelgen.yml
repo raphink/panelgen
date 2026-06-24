@@ -14,7 +14,6 @@ characters:
 
 scenes:
   space-solo:
-    prompt: "Single character in open space"
     prompt_prefix: >
       Comic panel in outer space with strong contrast, readable subject,
       and clean composition suitable for a story sequence.
