@@ -33,37 +33,25 @@ curl -L https://github.com/raphink/panelgen/releases/latest/download/panelgen-li
 
 **Container:**
 ```bash
-# Azure
-docker run --rm \
-  -v "$PWD:/work" \
-  -e AZURE_OPENAI_ENDPOINT \
-  -e AZURE_OPENAI_API_KEY \
-  panelgen batch --config panelgen.yml
-
-# OpenAI
 docker run --rm \
   -v "$PWD:/work" \
   -e OPENAI_API_KEY \
+  -e OPENAI_BASE_URL \
   panelgen batch --config panelgen.yml
 ```
 
 ## Requirements
 
-**Azure OpenAI:**
-```bash
-export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
-export AZURE_OPENAI_API_KEY="your-key"
-export AZURE_OPENAI_DEPLOYMENT="gpt-image-2"   # optional, default: gpt-image-2
-```
-
-**Standard OpenAI:**
 ```bash
 export OPENAI_API_KEY="your-key"
-export OPENAI_MODEL="gpt-image-2"    # optional, default: gpt-image-2
-export OPENAI_BASE_URL="https://api.openai.com"  # optional, for custom endpoints
+export OPENAI_BASE_URL="https://api.openai.com/v1"  # default; set to Azure endpoint for Azure
+export OPENAI_MODEL="gpt-image-2"                   # optional, default: gpt-image-2
 ```
 
-Provider is selected automatically: Azure when `AZURE_OPENAI_ENDPOINT` is set, otherwise OpenAI.
+For Azure Foundry, set `OPENAI_BASE_URL` to your Azure OpenAI endpoint, e.g.:
+```bash
+export OPENAI_BASE_URL="https://your-resource.openai.azure.com/openai/v1"
+```
 
 ## Usage
 
@@ -265,8 +253,8 @@ Or via container in a CI/agentic step:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  -e AZURE_OPENAI_ENDPOINT \
-  -e AZURE_OPENAI_API_KEY \
+  -e OPENAI_API_KEY \
+  -e OPENAI_BASE_URL \
   panelgen generate -prompt-file /work/prompt.txt /work/output.png
 ```
 

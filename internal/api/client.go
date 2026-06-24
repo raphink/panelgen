@@ -1,4 +1,4 @@
-// Package api provides a minimal client for the OpenAI and Azure OpenAI image generation APIs.
+// Package api provides a minimal OpenAI-compatible image generation client.
 package api
 
 import (
@@ -17,107 +17,51 @@ import (
 	"time"
 )
 
-// Provider selects between the standard OpenAI API and Azure OpenAI.
-type Provider int
-
-const (
-	ProviderOpenAI Provider = iota
-	ProviderAzure
-)
-
-// Client talks to the OpenAI or Azure OpenAI images API.
+// Client talks to an OpenAI-compatible images API.
 type Client struct {
-	Provider   Provider
 	Endpoint   string
 	APIKey     string
-	Deployment string // model name (OpenAI) or deployment name (Azure)
-	APIVersion string // Azure only
+	Deployment string
 	HTTPClient *http.Client
 }
 
 // NewClientFromEnv creates a Client from environment variables.
 //
-// Azure is used when AZURE_OPENAI_ENDPOINT is set:
-//
-//	AZURE_OPENAI_ENDPOINT   https://your-resource.openai.azure.com
-//	AZURE_OPENAI_API_KEY    your-key
-//	AZURE_OPENAI_DEPLOYMENT deployment name (default: gpt-image-2)
-//
-// Standard OpenAI is used when OPENAI_API_KEY is set:
-//
 //	OPENAI_API_KEY   your-key
-//	OPENAI_BASE_URL  base URL (default: https://api.openai.com)
-//	OPENAI_MODEL     model name (default: gpt-image-2)
+//	OPENAI_BASE_URL  base URL (default: https://api.openai.com/v1)
+//	OPENAI_MODEL     model name or deployment name (default: gpt-image-2)
 func NewClientFromEnv() (*Client, error) {
-	if azureEndpoint := os.Getenv("AZURE_OPENAI_ENDPOINT"); azureEndpoint != "" {
-		apiKey := os.Getenv("AZURE_OPENAI_API_KEY")
-		if apiKey == "" {
-			return nil, fmt.Errorf("AZURE_OPENAI_API_KEY must be set when AZURE_OPENAI_ENDPOINT is set")
-		}
-		deployment := os.Getenv("AZURE_OPENAI_DEPLOYMENT")
-		if deployment == "" {
-			deployment = "gpt-image-2"
-		}
-		return &Client{
-			Provider:   ProviderAzure,
-			Endpoint:   strings.TrimRight(azureEndpoint, "/"),
-			APIKey:     apiKey,
-			Deployment: deployment,
-			APIVersion: "2025-04-01-preview",
-			HTTPClient: &http.Client{Timeout: 300 * time.Second},
-		}, nil
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("OPENAI_API_KEY must be set")
 	}
-
-	if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey != "" {
-		endpoint := os.Getenv("OPENAI_BASE_URL")
-		if endpoint == "" {
-			endpoint = "https://api.openai.com"
-		}
-		model := os.Getenv("OPENAI_MODEL")
-		if model == "" {
-			model = "gpt-image-2"
-		}
-		return &Client{
-			Provider:   ProviderOpenAI,
-			Endpoint:   strings.TrimRight(endpoint, "/"),
-			APIKey:     apiKey,
-			Deployment: model,
-			HTTPClient: &http.Client{Timeout: 300 * time.Second},
-		}, nil
+	endpoint := os.Getenv("OPENAI_BASE_URL")
+	if endpoint == "" {
+		endpoint = "https://api.openai.com/v1"
 	}
-
-	return nil, fmt.Errorf(
-		"set AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_KEY (Azure) or OPENAI_API_KEY (OpenAI)",
-	)
+	model := os.Getenv("OPENAI_MODEL")
+	if model == "" {
+		model = "gpt-image-2"
+	}
+	return &Client{
+		Endpoint:   strings.TrimRight(endpoint, "/"),
+		APIKey:     apiKey,
+		Deployment: model,
+		HTTPClient: &http.Client{Timeout: 300 * time.Second},
+	}, nil
 }
 
 func (c *Client) generationsURL() string {
-	if c.Provider == ProviderAzure {
-		return fmt.Sprintf("%s/openai/deployments/%s/images/generations?api-version=%s",
-			c.Endpoint, c.Deployment, c.APIVersion)
-	}
-	return c.Endpoint + "/v1/images/generations"
+	return c.Endpoint + "/images/generations"
 }
 
 func (c *Client) editsURL() string {
-	if c.Provider == ProviderAzure {
-		return fmt.Sprintf("%s/openai/deployments/%s/images/edits?api-version=%s",
-			c.Endpoint, c.Deployment, c.APIVersion)
-	}
-	return c.Endpoint + "/v1/images/edits"
-}
-
-func (c *Client) setAuth(req *http.Request) {
-	if c.Provider == ProviderAzure {
-		req.Header.Set("api-key", c.APIKey)
-	} else {
-		req.Header.Set("Authorization", "Bearer "+c.APIKey)
-	}
+	return c.Endpoint + "/images/edits"
 }
 
 // GenerateRequest is the body for the /images/generations endpoint.
 type GenerateRequest struct {
-	Model        string `json:"model,omitempty"` // OpenAI only
+	Model        string `json:"model,omitempty"`
 	Prompt       string `json:"prompt"`
 	N            int    `json:"n"`
 	Size         string `json:"size"`
@@ -149,9 +93,7 @@ func (c *Client) Generate(prompt, size, quality string) ([]byte, error) {
 		Quality:      quality,
 		OutputFormat: "png",
 	}
-	if c.Provider == ProviderOpenAI {
-		reqBody.Model = c.Deployment
-	}
+	reqBody.Model = c.Deployment
 	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, err
@@ -193,7 +135,7 @@ func (c *Client) doEdit(url, prompt string, refs []string, size, quality string)
 		return nil, err
 	}
 	req.Header.Set("Content-Type", contentType)
-	c.setAuth(req)
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -222,10 +164,8 @@ func (c *Client) buildEditForm(prompt string, refs []string, size, quality strin
 			return nil, "", err
 		}
 	}
-	if c.Provider == ProviderOpenAI {
-		if err := w.WriteField("model", c.Deployment); err != nil {
-			return nil, "", err
-		}
+	if err := w.WriteField("model", c.Deployment); err != nil {
+		return nil, "", err
 	}
 
 	for _, ref := range refs {
@@ -257,7 +197,7 @@ func (c *Client) doJSON(url string, body []byte) ([]byte, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	c.setAuth(req)
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

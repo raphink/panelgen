@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-func TestGenerateOpenAIRequest(t *testing.T) {
+func TestGenerateRequest(t *testing.T) {
 	imageData := []byte("png-data")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/images/generations" {
@@ -49,8 +49,7 @@ func TestGenerateOpenAIRequest(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{
-		Provider:   ProviderOpenAI,
-		Endpoint:   server.URL,
+		Endpoint:   server.URL + "/v1",
 		APIKey:     "test-key",
 		Deployment: "gpt-image-2",
 		HTTPClient: server.Client(),
@@ -64,7 +63,7 @@ func TestGenerateOpenAIRequest(t *testing.T) {
 	}
 }
 
-func TestEditAzureMultipartRequest(t *testing.T) {
+func TestEditMultipartRequest(t *testing.T) {
 	refPath := filepath.Join(t.TempDir(), "ref.png")
 	if err := os.WriteFile(refPath, []byte("ref-bytes"), 0644); err != nil {
 		t.Fatal(err)
@@ -72,15 +71,11 @@ func TestEditAzureMultipartRequest(t *testing.T) {
 
 	imageData := []byte("edited-png-data")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		wantPath := "/openai/deployments/image-deployment/images/edits"
-		if r.URL.Path != wantPath {
-			t.Fatalf("path = %q, want %s", r.URL.Path, wantPath)
+		if r.URL.Path != "/openai/v1/images/edits" {
+			t.Fatalf("path = %q, want /openai/v1/images/edits", r.URL.Path)
 		}
-		if got := r.URL.Query().Get("api-version"); got != "2025-04-01-preview" {
-			t.Fatalf("api-version = %q", got)
-		}
-		if got := r.Header.Get("api-key"); got != "azure-key" {
-			t.Fatalf("api-key = %q", got)
+		if got := r.Header.Get("Authorization"); got != "Bearer test-key" {
+			t.Fatalf("Authorization = %q", got)
 		}
 		if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data;") {
 			t.Fatalf("Content-Type = %q", r.Header.Get("Content-Type"))
@@ -94,9 +89,7 @@ func TestEditAzureMultipartRequest(t *testing.T) {
 		assertFormValue(t, r, "size", "1536x1024")
 		assertFormValue(t, r, "quality", "medium")
 		assertFormValue(t, r, "output_format", "png")
-		if _, ok := r.MultipartForm.Value["model"]; ok {
-			t.Fatal("Azure edit request should not include model field")
-		}
+		assertFormValue(t, r, "model", "image-deployment")
 
 		files := r.MultipartForm.File["image[]"]
 		if len(files) != 1 {
@@ -126,11 +119,9 @@ func TestEditAzureMultipartRequest(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{
-		Provider:   ProviderAzure,
-		Endpoint:   server.URL,
-		APIKey:     "azure-key",
+		Endpoint:   server.URL + "/openai/v1",
+		APIKey:     "test-key",
 		Deployment: "image-deployment",
-		APIVersion: "2025-04-01-preview",
 		HTTPClient: server.Client(),
 	}
 	got, err := client.Edit("use this reference", []string{refPath}, "1536x1024", "medium")
@@ -149,7 +140,6 @@ func TestGenerateReturnsStatusErrors(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{
-		Provider:   ProviderOpenAI,
 		Endpoint:   server.URL,
 		APIKey:     "test-key",
 		Deployment: "gpt-image-2",

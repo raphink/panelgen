@@ -10,3 +10,5 @@ generated/
 *.swp
 *.swo
 .DS_Store
+
+secrets.yml
