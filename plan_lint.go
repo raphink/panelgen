@@ -111,53 +111,41 @@ type panelPlanResult struct {
 	prompt  string
 }
 
+func resolvePanelScene(panel config.Panel, cfg *config.Config, configDir string) (prefix string, refs []string, size, quality string, err error) {
+	if panel.Scene == "" {
+		return "", nil, "", "", nil
+	}
+	resolved, err := generate.ResolveScene(cfg, panel.Scene, configDir, panel.Vars)
+	if err != nil {
+		return "", nil, "", "", err
+	}
+	return resolved.Prefix, resolved.Refs, resolved.Size, resolved.Quality, nil
+}
+
 func planOnePanel(panel config.Panel, cfg *config.Config, configDir, outputDir, size, quality, styleFile string, force bool) panelPlanResult {
 	prompt := strings.TrimSpace(panel.Prompt)
 	if prompt == "" || panel.Scene == "blank" {
 		return panelPlanResult{status: "skip", reason: "blank"}
 	}
 
-	prefix := ""
-	var sceneRefs []string
-	sceneSize, sceneQuality := "", ""
-	if panel.Scene != "" {
-		resolved, err := generate.ResolveScene(cfg, panel.Scene, configDir, panel.Vars)
-		if err != nil {
-			return panelPlanResult{status: "invalid", err: err}
-		}
-		prefix = resolved.Prefix
-		sceneRefs = resolved.Refs
-		sceneSize = resolved.Size
-		sceneQuality = resolved.Quality
+	prefix, sceneRefs, sceneSize, sceneQuality, err := resolvePanelScene(panel, cfg, configDir)
+	if err != nil {
+		return panelPlanResult{status: "invalid", err: err}
 	}
 
 	finalSize := firstNonEmpty(size, sceneSize, cfg.Defaults.Size, "1024x1024")
 	finalQuality := firstNonEmpty(quality, sceneQuality, cfg.Defaults.Quality, "high")
 
 	panelCharDescs, panelCharRefs := generate.ResolveCharacters(cfg, panel.Characters, configDir)
-	if len(panelCharDescs) > 0 {
-		extra := strings.Join(panelCharDescs, "\n\n")
-		if prefix != "" {
-			prefix = prefix + "\n\n" + extra
-		} else {
-			prefix = extra
-		}
-	}
+	prefix = generate.MergeCharPrefix(prefix, panelCharDescs)
 
-	var panelRefs []string
-	panelRefs = append(panelRefs, panelCharRefs...)
+	var contRefs []string
 	if panel.Continue > 0 {
 		if img := generate.BestPageImage(outputDir, panel.Continue); img != "" {
-			panelRefs = append(panelRefs, img)
+			contRefs = []string{img}
 		}
 	}
-	for _, r := range panel.Refs {
-		path := r
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(configDir, r)
-		}
-		panelRefs = append(panelRefs, path)
-	}
+	panelRefs := append(append(panelCharRefs, contRefs...), generate.AbsRefs(panel.Refs, configDir)...)
 	allRefs := append(sceneRefs, panelRefs...)
 
 	if !force && generate.HasVersion(outputDir, panel.Page, finalQuality) {
@@ -194,35 +182,37 @@ func lintConfig(cfg *config.Config, configDir, styleFlag string, noStyle bool) [
 	return issues
 }
 
-func lintContinueDeps(cfg *config.Config, add func(string, string)) {
-	pageSet := make(map[int]bool, len(cfg.Panels))
-	contOf := make(map[int]int) // pageNum → continueFromPage
+func buildContinueMap(cfg *config.Config) (pageSet map[int]bool, contOf map[int]int) {
+	pageSet = make(map[int]bool, len(cfg.Panels))
+	contOf = make(map[int]int)
 	for _, p := range cfg.Panels {
 		pageSet[p.Page] = true
 		if p.Continue > 0 {
 			contOf[p.Page] = p.Continue
 		}
 	}
+	return
+}
 
+func checkContinueSanity(contOf map[int]int, pageSet map[int]bool, add func(string, string)) {
 	for page, dep := range contOf {
 		if page == dep {
 			add("error", fmt.Sprintf("panel page=%d: continue: self-reference", page))
-			continue
-		}
-		if !pageSet[dep] {
+		} else if !pageSet[dep] {
 			add("error", fmt.Sprintf("panel page=%d: continue=%d references a non-existent page", page, dep))
 		}
 	}
+}
 
-	// Cycle detection via DFS.
+func checkContinueCycles(contOf map[int]int, add func(string, string)) {
 	const (
 		unvisited = 0
 		inStack   = 1
 		done      = 2
 	)
 	state := make(map[int]int, len(contOf))
-	var hasCycle func(page int) bool
-	hasCycle = func(page int) bool {
+	var dfs func(int) bool
+	dfs = func(page int) bool {
 		switch state[page] {
 		case inStack:
 			return true
@@ -230,19 +220,23 @@ func lintContinueDeps(cfg *config.Config, add func(string, string)) {
 			return false
 		}
 		state[page] = inStack
-		if dep, ok := contOf[page]; ok {
-			if hasCycle(dep) {
-				return true
-			}
+		if dep, ok := contOf[page]; ok && dfs(dep) {
+			return true
 		}
 		state[page] = done
 		return false
 	}
 	for page := range contOf {
-		if state[page] == unvisited && hasCycle(page) {
+		if state[page] == unvisited && dfs(page) {
 			add("error", fmt.Sprintf("panel page=%d: continue: references form a cycle", page))
 		}
 	}
+}
+
+func lintContinueDeps(cfg *config.Config, add func(string, string)) {
+	pageSet, contOf := buildContinueMap(cfg)
+	checkContinueSanity(contOf, pageSet, add)
+	checkContinueCycles(contOf, add)
 }
 
 func lintDefaults(cfg *config.Config, add func(string, string)) {

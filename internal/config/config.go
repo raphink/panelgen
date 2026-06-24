@@ -83,14 +83,27 @@ func load(absPath string, seen map[string]bool) (*Config, error) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 
-	// Process imports first, then let cfg's own definitions override.
-	// mergo.Merge fills zero-value fields from src; maps are merged key-by-key.
+	dir := filepath.Dir(absPath)
+	base, err := mergeImports(cfg.Imports, dir, seen)
+	if err != nil {
+		return nil, err
+	}
+
+	// cfg overrides base: merge base into cfg (fills only cfg's zero-value fields).
+	if err := mergo.Merge(cfg, base); err != nil {
+		return nil, fmt.Errorf("merge config: %w", err)
+	}
+
+	applyConfigDefaults(cfg)
+	return cfg, nil
+}
+
+func mergeImports(imports []string, dir string, seen map[string]bool) (*Config, error) {
 	base := &Config{
 		Scenes:     make(map[string]Scene),
 		Characters: make(map[string]Character),
 	}
-	dir := filepath.Dir(absPath)
-	for _, imp := range cfg.Imports {
+	for _, imp := range imports {
 		impPath := imp
 		if !filepath.IsAbs(impPath) {
 			impPath = filepath.Join(dir, imp)
@@ -107,12 +120,10 @@ func load(absPath string, seen map[string]bool) (*Config, error) {
 			return nil, fmt.Errorf("merge import %s: %w", imp, err)
 		}
 	}
+	return base, nil
+}
 
-	// cfg overrides base: merge base into cfg (fills only cfg's zero-value fields).
-	if err := mergo.Merge(cfg, base); err != nil {
-		return nil, fmt.Errorf("merge config: %w", err)
-	}
-
+func applyConfigDefaults(cfg *Config) {
 	if cfg.Defaults.Size == "" {
 		cfg.Defaults.Size = "1024x1024"
 	}
@@ -122,6 +133,4 @@ func load(absPath string, seen map[string]bool) (*Config, error) {
 	if cfg.OutputDir == "" {
 		cfg.OutputDir = "generated"
 	}
-
-	return cfg, nil
 }

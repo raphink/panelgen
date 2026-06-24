@@ -67,7 +67,7 @@ func BestPageImage(outputDir string, pageNum int) string {
 			if sub == nil {
 				continue
 			}
-			n, _ := strconv.Atoi(sub[2])
+			n, _ := strconv.Atoi(sub[3])
 			if QualityRank[q] > bestQ || (QualityRank[q] == bestQ && n > bestN) {
 				best, bestQ, bestN = m, QualityRank[q], n
 			}
@@ -392,51 +392,22 @@ func runWorkList(client *api.Client, work []workItem, styleFile, outputDir strin
 	var mu sync.Mutex
 
 	runOne := func(item workItem) {
-		done := pageDone[item.pageNum]
-		defer close(done)
-
-		// Wait for continue dependency, then resolve the ref.
-		if item.continueFromPage > 0 {
-			if depDone, ok := pageDone[item.continueFromPage]; ok {
-				<-depDone
-			}
-			if img := BestPageImage(outputDir, item.continueFromPage); img != "" {
-				item.refs = append(item.refs, img)
-			} else {
-				fmt.Fprintf(os.Stderr, "%s %s %s continue=%d%sno image found for that page\n",
-					fmtIdx(item.index, item.total), ui.IconWarn,
-					ui.Bold(fmt.Sprintf("Page %d", item.pageNum)),
-					item.continueFromPage, ui.Sep())
-			}
-		}
-
-		scene := ""
-		if item.scene != "" {
-			scene = ui.Sep() + ui.Dim(item.scene)
-		}
-		refs := ""
-		if len(item.refs) > 0 {
-			refs = ui.Dim(fmt.Sprintf(" (%d ref(s))", len(item.refs)))
-		}
-		fmt.Fprintf(os.Stderr, "%s %s %s%s%s\n",
-			fmtIdx(item.index, item.total), ui.IconGen,
-			ui.Bold(fmt.Sprintf("Page %d", item.pageNum)),
-			scene, refs)
-
+		defer close(pageDone[item.pageNum])
+		waitAndResolveRef(&item, pageDone, outputDir)
+		logItemStart(item)
 		start := time.Now()
-		if err := generateOne(client, item, styleFile); err != nil {
-			mu.Lock()
+		err := generateOne(client, item, styleFile)
+		mu.Lock()
+		defer mu.Unlock()
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "  %s %s\n", ui.BoldRed("FAILED"), ui.Dim(err.Error()))
 			failed++
-			mu.Unlock()
 			return
 		}
-		mu.Lock()
 		fmt.Fprintf(os.Stderr, "  %s Saved%s%s%s\n",
 			ui.IconOK, ui.Sep(), item.output,
 			ui.Dim(" ("+ui.Dur(time.Since(start))+")"))
 		generated++
-		mu.Unlock()
 	}
 
 	if parallel <= 1 {
@@ -487,24 +458,8 @@ func buildWorkList(panels []config.Panel, cfg *config.Config, opts BatchOptions,
 		quality := firstNonEmpty(opts.Quality, sceneQuality, cfg.Defaults.Quality)
 
 		panelCharDescs, panelCharRefs := ResolveCharacters(cfg, panel.Characters, opts.ConfigDir)
-		if len(panelCharDescs) > 0 {
-			extra := strings.Join(panelCharDescs, "\n\n")
-			if prefix != "" {
-				prefix = prefix + "\n\n" + extra
-			} else {
-				prefix = extra
-			}
-		}
-
-		var panelRefs []string
-		panelRefs = append(panelRefs, panelCharRefs...)
-		for _, r := range panel.Refs {
-			path := r
-			if !filepath.IsAbs(path) {
-				path = filepath.Join(opts.ConfigDir, r)
-			}
-			panelRefs = append(panelRefs, path)
-		}
+		prefix = MergeCharPrefix(prefix, panelCharDescs)
+		panelRefs := append(panelCharRefs, AbsRefs(panel.Refs, opts.ConfigDir)...)
 		allRefs := append(sceneRefs, panelRefs...)
 
 		if HasVersion(outputDir, panel.Page, quality) && !opts.Force {
@@ -583,4 +538,61 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// MergeCharPrefix appends character description lines to an existing prefix string.
+func MergeCharPrefix(prefix string, descs []string) string {
+	if len(descs) == 0 {
+		return prefix
+	}
+	extra := strings.Join(descs, "\n\n")
+	if prefix == "" {
+		return extra
+	}
+	return prefix + "\n\n" + extra
+}
+
+// AbsRefs resolves ref paths to absolute paths relative to configDir.
+func AbsRefs(refs []string, configDir string) []string {
+	out := make([]string, len(refs))
+	for i, r := range refs {
+		if filepath.IsAbs(r) {
+			out[i] = r
+		} else {
+			out[i] = filepath.Join(configDir, r)
+		}
+	}
+	return out
+}
+
+func waitAndResolveRef(item *workItem, pageDone map[int]chan struct{}, outputDir string) {
+	if item.continueFromPage <= 0 {
+		return
+	}
+	if depDone, ok := pageDone[item.continueFromPage]; ok {
+		<-depDone
+	}
+	if img := BestPageImage(outputDir, item.continueFromPage); img != "" {
+		item.refs = append(item.refs, img)
+	} else {
+		fmt.Fprintf(os.Stderr, "%s %s %s continue=%d%sno image found for that page\n",
+			fmtIdx(item.index, item.total), ui.IconWarn,
+			ui.Bold(fmt.Sprintf("Page %d", item.pageNum)),
+			item.continueFromPage, ui.Sep())
+	}
+}
+
+func logItemStart(item workItem) {
+	scene := ""
+	if item.scene != "" {
+		scene = ui.Sep() + ui.Dim(item.scene)
+	}
+	refs := ""
+	if len(item.refs) > 0 {
+		refs = ui.Dim(fmt.Sprintf(" (%d ref(s))", len(item.refs)))
+	}
+	fmt.Fprintf(os.Stderr, "%s %s %s%s%s\n",
+		fmtIdx(item.index, item.total), ui.IconGen,
+		ui.Bold(fmt.Sprintf("Page %d", item.pageNum)),
+		scene, refs)
 }

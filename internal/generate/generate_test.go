@@ -283,6 +283,92 @@ func TestFirstNonEmpty(t *testing.T) {
 	}
 }
 
+// ─── MergeCharPrefix ─────────────────────────────────────────────────────────
+
+func TestMergeCharPrefix_EmptyDescs(t *testing.T) {
+	if got := MergeCharPrefix("existing", nil); got != "existing" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestMergeCharPrefix_EmptyPrefix(t *testing.T) {
+	got := MergeCharPrefix("", []string{"desc1", "desc2"})
+	want := "desc1\n\ndesc2"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestMergeCharPrefix_Appends(t *testing.T) {
+	got := MergeCharPrefix("scene prefix", []string{"char desc"})
+	want := "scene prefix\n\nchar desc"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// ─── AbsRefs ─────────────────────────────────────────────────────────────────
+
+func TestAbsRefs_RelativeAndAbsolute(t *testing.T) {
+	got := AbsRefs([]string{"rel/path.png", "/abs/path.png"}, "/base")
+	want := []string{"/base/rel/path.png", "/abs/path.png"}
+	if len(got) != len(want) {
+		t.Fatalf("len %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("[%d] got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestAbsRefs_Empty(t *testing.T) {
+	if got := AbsRefs(nil, "/base"); len(got) != 0 {
+		t.Errorf("expected empty, got %v", got)
+	}
+}
+
+// ─── BestPageImage ────────────────────────────────────────────────────────────
+
+func TestBestPageImage_NoFiles(t *testing.T) {
+	dir := t.TempDir()
+	if got := BestPageImage(dir, 1); got != "" {
+		t.Errorf("expected empty, got %q", got)
+	}
+}
+
+func TestBestPageImage_PrefersHighQuality(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, dir+"/page_1_low-1.png")
+	touch(t, dir+"/page_1_medium-1.png")
+	touch(t, dir+"/page_1_high-1.png")
+	got := BestPageImage(dir, 1)
+	if filepath.Base(got) != "page_1_high-1.png" {
+		t.Errorf("got %q, want page_1_high-1.png", got)
+	}
+}
+
+func TestBestPageImage_PrefersHigherVersion(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, dir+"/page_2_high-1.png")
+	touch(t, dir+"/page_2_high-3.png")
+	touch(t, dir+"/page_2_high-2.png")
+	got := BestPageImage(dir, 2)
+	if filepath.Base(got) != "page_2_high-3.png" {
+		t.Errorf("got %q, want page_2_high-3.png", got)
+	}
+}
+
+func TestBestPageImage_QualityBeatsVersion(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, dir+"/page_3_low-99.png")
+	touch(t, dir+"/page_3_high-1.png")
+	got := BestPageImage(dir, 3)
+	if filepath.Base(got) != "page_3_high-1.png" {
+		t.Errorf("got %q, want page_3_high-1.png", got)
+	}
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 func writeTempFile(t *testing.T, content string) string {
