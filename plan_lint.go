@@ -33,13 +33,13 @@ type lintIssue struct {
 	msg   string
 }
 
-func filterPanelsByPage(panels []config.Panel, pagesFlag string) []config.Panel {
+func filterPanelsByPage(panels []config.Panel, pagesFlag string) ([]config.Panel, error) {
 	if pagesFlag == "" {
-		return panels
+		return panels, nil
 	}
 	pageList, err := parsePageSpec(pagesFlag)
 	if err != nil {
-		fatalf("parse --pages: %v", err)
+		return nil, fmt.Errorf("parse --pages: %w", err)
 	}
 	pageSet := make(map[int]bool, len(pageList))
 	for _, p := range pageList {
@@ -51,7 +51,7 @@ func filterPanelsByPage(panels []config.Panel, pagesFlag string) []config.Panel 
 			filtered = append(filtered, p)
 		}
 	}
-	return filtered
+	return filtered, nil
 }
 
 func planIdx(idx, total int) string {
@@ -192,7 +192,7 @@ func generationPreflightIssues(cfg *config.Config, configDir, styleFlag string, 
 	return issues
 }
 
-func requireNoPreflightErrors(issues []lintIssue) {
+func requireNoPreflightErrors(issues []lintIssue) error {
 	errors := 0
 	for _, issue := range issues {
 		if issue.level != "error" {
@@ -202,8 +202,9 @@ func requireNoPreflightErrors(issues []lintIssue) {
 		errors++
 	}
 	if errors > 0 {
-		fatalf("validation failed with %d error(s); run `panelgen lint` for the full report", errors)
+		return fmt.Errorf("validation failed with %d error(s); run `panelgen lint` for the full report", errors)
 	}
+	return nil
 }
 
 func lintSizeQualityIssues(label, size, quality string) []lintIssue {
@@ -402,20 +403,20 @@ func lintRefs(refs []string, configDir, label string, add func(string, string)) 
 	}
 }
 
-func mustLoadConfig(configFile string) (*config.Config, string) {
-	cfg, configDir, _ := mustLoadConfigWithWarnings(configFile)
-	return cfg, configDir
+func loadRequiredConfig(configFile string) (*config.Config, string, error) {
+	cfg, configDir, _, err := loadRequiredConfigWithWarnings(configFile)
+	return cfg, configDir, err
 }
 
-func mustLoadConfigWithWarnings(configFile string) (*config.Config, string, []config.LoadWarning) {
+func loadRequiredConfigWithWarnings(configFile string) (*config.Config, string, []config.LoadWarning, error) {
 	if _, err := os.Stat(configFile); err != nil {
-		fatalf("config file not found: %s", configFile)
+		return nil, "", nil, fmt.Errorf("config file not found: %s", configFile)
 	}
 	cfg, warnings, err := config.LoadWithWarnings(configFile)
 	if err != nil {
-		fatalf("load config: %v", err)
+		return nil, "", nil, fmt.Errorf("load config: %w", err)
 	}
-	return cfg, filepath.Dir(configFile), warnings
+	return cfg, filepath.Dir(configFile), warnings, nil
 }
 
 func loadWarningsAsIssues(warnings []config.LoadWarning) []lintIssue {

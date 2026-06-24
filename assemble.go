@@ -36,8 +36,7 @@ var assembleCmd = &cobra.Command{
 	Long: `Assemble generated page images into a PDF.
 For each page, picks the highest quality then latest increment.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		runAssemble(configFile, assembleInput, assembleOutput, assembleVerbose, assembleList)
-		return nil
+		return runAssemble(configFile, assembleInput, assembleOutput, assembleVerbose, assembleList)
 	},
 }
 
@@ -49,12 +48,15 @@ func init() {
 }
 
 // runAssemble is the shared implementation called by assembleCmd and batchCmd.
-func runAssemble(configFile, inputDir, output string, verbose, listOnly bool) {
-	cfg, resolvedInput, resolvedOutput := resolveAssemblePaths(configFile, inputDir, output)
+func runAssemble(configFile, inputDir, output string, verbose, listOnly bool) error {
+	cfg, resolvedInput, resolvedOutput, err := resolveAssemblePaths(configFile, inputDir, output)
+	if err != nil {
+		return err
+	}
 
 	best, err := findBestImages(resolvedInput)
 	if err != nil {
-		fatalf("find images: %v", err)
+		return fmt.Errorf("find images: %w", err)
 	}
 
 	if cfg != nil {
@@ -62,7 +64,7 @@ func runAssemble(configFile, inputDir, output string, verbose, listOnly bool) {
 	}
 
 	if len(best) == 0 {
-		fatalf("no page images found in %s", resolvedInput)
+		return fmt.Errorf("no page images found in %s", resolvedInput)
 	}
 
 	for _, c := range best {
@@ -72,22 +74,23 @@ func runAssemble(configFile, inputDir, output string, verbose, listOnly bool) {
 	}
 
 	if listOnly {
-		return
+		return nil
 	}
 
 	if err := assemblePDF(best, resolvedOutput); err != nil {
-		fatalf("assemble PDF: %v", err)
+		return fmt.Errorf("assemble PDF: %w", err)
 	}
 	fmt.Printf("Assembled %d pages -> %s\n", len(best), resolvedOutput)
+	return nil
 }
 
-func resolveAssemblePaths(configFile, inputDir, output string) (*config.Config, string, string) {
+func resolveAssemblePaths(configFile, inputDir, output string) (*config.Config, string, string, error) {
 	var cfg *config.Config
 	configDir := "."
 	if _, err := os.Stat(configFile); err == nil {
 		loaded, err := config.Load(configFile)
 		if err != nil {
-			fatalf("load config: %v", err)
+			return nil, "", "", fmt.Errorf("load config: %w", err)
 		}
 		cfg = loaded
 		configDir = filepath.Dir(configFile)
@@ -106,7 +109,7 @@ func resolveAssemblePaths(configFile, inputDir, output string) (*config.Config, 
 		stem := strings.TrimSuffix(filepath.Base(configFile), filepath.Ext(configFile))
 		resolvedOutput = filepath.Join(filepath.Dir(configFile), stem+".pdf")
 	}
-	return cfg, resolvedInput, resolvedOutput
+	return cfg, resolvedInput, resolvedOutput, nil
 }
 
 func applySelectedOverrides(cfg *config.Config, inputDir string, best []pageCandidate) []pageCandidate {

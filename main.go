@@ -29,6 +29,7 @@ var (
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "panelgen: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -36,9 +37,11 @@ func main() {
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
 var rootCmd = &cobra.Command{
-	Use:     "panelgen",
-	Short:   "AI image series generator",
-	Version: version,
+	Use:           "panelgen",
+	Short:         "AI image series generator",
+	Version:       version,
+	SilenceErrors: true,
+	SilenceUsage:  true,
 }
 
 func init() {
@@ -93,7 +96,10 @@ ARGUMENTS
 			return fmt.Errorf("PROMPT and --prompt-file are mutually exclusive")
 		}
 
-		cfg, configDir := loadOptionalConfig(configFile, genScene)
+		cfg, configDir, err := loadOptionalConfig(configFile, genScene)
+		if err != nil {
+			return err
+		}
 
 		scenePrefix := ""
 		var sceneRefs []string
@@ -101,7 +107,7 @@ ARGUMENTS
 		if genScene != "" {
 			resolved, err := generate.ResolveScene(cfg, genScene, configDir, nil)
 			if err != nil {
-				fatalf("%v", err)
+				return err
 			}
 			scenePrefix = resolved.Prefix
 			sceneRefs = resolved.Refs
@@ -112,23 +118,23 @@ ARGUMENTS
 		finalSize := firstNonEmpty(genSize, sceneSize, cfg.Defaults.Size, "1024x1024")
 		finalQuality := firstNonEmpty(genQuality, sceneQuality, cfg.Defaults.Quality, "high")
 		if !isValidSize(finalSize) {
-			fatalf("invalid size %q (must be WxH with both dimensions divisible by 16 and ≤8,294,400 total pixels)", finalSize)
+			return fmt.Errorf("invalid size %q (must be WxH with both dimensions divisible by 16 and ≤8,294,400 total pixels)", finalSize)
 		}
 		if !validQualities[finalQuality] {
-			fatalf("invalid quality %q (expected one of: low, medium, high)", finalQuality)
+			return fmt.Errorf("invalid quality %q (expected one of: low, medium, high)", finalQuality)
 		}
 		allRefs := append(sceneRefs, genRefs...)
 		resolvedStyle := resolveStyle(styleFile, noStyle, cfg, configDir)
 
 		for _, r := range allRefs {
 			if _, err := os.Stat(r); err != nil {
-				fatalf("reference image not found: %s", r)
+				return fmt.Errorf("reference image not found: %s", r)
 			}
 		}
 
 		client, err := api.NewClientFromEnv()
 		if err != nil {
-			fatalf("%v", err)
+			return err
 		}
 
 		if err := generate.Run(client, generate.Options{
@@ -141,7 +147,7 @@ ARGUMENTS
 			Size:        finalSize,
 			Quality:     finalQuality,
 		}); err != nil {
-			fatalf("%v", err)
+			return err
 		}
 		return nil
 	},
@@ -175,22 +181,24 @@ var batchCmd = &cobra.Command{
 Idempotent: skips panels that already have output at the requested quality.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if _, err := os.Stat(configFile); err != nil {
-			fatalf("config file not found: %s", configFile)
+			return fmt.Errorf("config file not found: %s", configFile)
 		}
 
 		cfg, err := config.Load(configFile)
 		if err != nil {
-			fatalf("load config: %v", err)
+			return fmt.Errorf("load config: %w", err)
 		}
 		configDir := filepath.Dir(configFile)
 		resolvedStyle := resolveStyle(styleFile, noStyle, cfg, configDir)
-		requireNoPreflightErrors(generationPreflightIssues(cfg, configDir, styleFile, noStyle, batchSize, batchQuality))
+		if err := requireNoPreflightErrors(generationPreflightIssues(cfg, configDir, styleFile, noStyle, batchSize, batchQuality)); err != nil {
+			return err
+		}
 
 		var pageList []int
 		if batchPages != "" {
 			pageList, err = parsePageSpec(batchPages)
 			if err != nil {
-				fatalf("parse --pages: %v", err)
+				return fmt.Errorf("parse --pages: %w", err)
 			}
 		}
 
@@ -198,7 +206,7 @@ Idempotent: skips panels that already have output at the requested quality.`,
 		if !batchDryRun {
 			client, err = api.NewClientFromEnv()
 			if err != nil {
-				fatalf("%v", err)
+				return err
 			}
 		}
 
@@ -214,11 +222,11 @@ Idempotent: skips panels that already have output at the requested quality.`,
 			Parallel:  batchParallel,
 			OutputDir: batchOutputDir,
 		}); err != nil {
-			fatalf("%v", err)
+			return err
 		}
 
 		if batchAssemble || (cfg.Defaults.Assemble != nil && *cfg.Defaults.Assemble) {
-			runAssemble(configFile, batchOutputDir, "", false, false)
+			return runAssemble(configFile, batchOutputDir, "", false, false)
 		}
 		return nil
 	},
@@ -253,13 +261,21 @@ var planCmd = &cobra.Command{
 	Long: `Preview batch generation: resolved outputs, refs, and prompts (optional).
 No API calls are made.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, configDir := mustLoadConfig(configFile)
+		cfg, configDir, err := loadRequiredConfig(configFile)
+		if err != nil {
+			return err
+		}
 		resolvedStyle := resolveStyle(styleFile, noStyle, cfg, configDir)
-		requireNoPreflightErrors(generationPreflightIssues(cfg, configDir, styleFile, noStyle, planSize, planQuality))
+		if err := requireNoPreflightErrors(generationPreflightIssues(cfg, configDir, styleFile, noStyle, planSize, planQuality)); err != nil {
+			return err
+		}
 
-		panels := filterPanelsByPage(cfg.Panels, planPages)
+		panels, err := filterPanelsByPage(cfg.Panels, planPages)
+		if err != nil {
+			return err
+		}
 		if len(panels) == 0 {
-			fatalf("no panels to plan")
+			return fmt.Errorf("no panels to plan")
 		}
 
 		outputDir := filepath.Join(configDir, cfg.OutputDir)
@@ -279,7 +295,7 @@ No API calls are made.`,
 			ui.BoldRed(fmt.Sprintf("%d invalid", invalid)),
 			ui.Dim(fmt.Sprintf(" (of %d)", total)))
 		if invalid > 0 {
-			os.Exit(1)
+			return fmt.Errorf("%d invalid panel(s)", invalid)
 		}
 		return nil
 	},
@@ -303,7 +319,10 @@ var lintCmd = &cobra.Command{
 	Short: "Validate config and local file references",
 	Long:  `Validate config shape, scene/character references, and local file paths.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, configDir, loadWarnings := mustLoadConfigWithWarnings(configFile)
+		cfg, configDir, loadWarnings, err := loadRequiredConfigWithWarnings(configFile)
+		if err != nil {
+			return err
+		}
 		issues := append(loadWarningsAsIssues(loadWarnings), lintConfig(cfg, configDir, styleFile, noStyle)...)
 
 		errors, warnings := 0, 0
@@ -325,7 +344,7 @@ var lintCmd = &cobra.Command{
 				ui.BoldYellow(fmt.Sprintf("%d warning(s)", warnings)))
 		}
 		if errors > 0 || (lintStrict && warnings > 0) {
-			os.Exit(1)
+			return fmt.Errorf("lint failed with %d error(s), %d warning(s)", errors, warnings)
 		}
 		return nil
 	},
@@ -343,7 +362,7 @@ var scenesCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load(configFile)
 		if err != nil {
-			fatalf("load config: %v", err)
+			return fmt.Errorf("load config: %w", err)
 		}
 
 		if len(cfg.Scenes) == 0 {
@@ -389,7 +408,10 @@ var charactersListCmd = &cobra.Command{
 	Aliases: []string{"ls"},
 	Short:   "List characters and their prompts",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, _ := mustLoadConfig(configFile)
+		cfg, _, err := loadRequiredConfig(configFile)
+		if err != nil {
+			return err
+		}
 		for _, name := range sortedCharacterNames(cfg) {
 			char := cfg.Characters[name]
 			refs := ui.Dim(fmt.Sprintf("(%d ref(s))", len(char.Refs)))
@@ -418,7 +440,10 @@ var charactersGenerateCmd = &cobra.Command{
 Output: <characters_dir>/<name>-<N>.png`,
 	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, configDir := mustLoadConfig(configFile)
+		cfg, configDir, err := loadRequiredConfig(configFile)
+		if err != nil {
+			return err
+		}
 
 		names := args
 		if charsGenAll {
@@ -429,7 +454,7 @@ Output: <characters_dir>/<name>-<N>.png`,
 		}
 		for _, name := range names {
 			if _, ok := cfg.Characters[name]; !ok {
-				fatalf("unknown character %q", name)
+				return fmt.Errorf("unknown character %q", name)
 			}
 		}
 
@@ -444,18 +469,20 @@ Output: <characters_dir>/<name>-<N>.png`,
 		resolvedStyle := resolveStyle(styleFile, noStyle, cfg, configDir)
 		finalSize := firstNonEmpty(charsGenSize, cfg.Defaults.Size, "1024x1024")
 		finalQuality := firstNonEmpty(charsGenQuality, cfg.Defaults.Quality, "high")
-		requireNoPreflightErrors(lintSizeQualityIssues("characters", finalSize, finalQuality))
+		if err := requireNoPreflightErrors(lintSizeQualityIssues("characters", finalSize, finalQuality)); err != nil {
+			return err
+		}
 		preprompt := firstNonEmpty(charsGenPreprompt, cfg.Defaults.CharactersPreprompt, defaultCharacterPreprompt)
 
 		var client *api.Client
 		if !charsGenShowPrompt {
 			if err := os.MkdirAll(resolvedOutput, 0755); err != nil {
-				fatalf("create output dir: %v", err)
+				return fmt.Errorf("create output dir: %w", err)
 			}
 			var err error
 			client, err = api.NewClientFromEnv()
 			if err != nil {
-				fatalf("%v", err)
+				return err
 			}
 		}
 
@@ -523,7 +550,7 @@ Output: <characters_dir>/<name>-<N>.png`,
 		}
 
 		if failed > 0 {
-			fatalf("%d character(s) failed", failed)
+			return fmt.Errorf("%d character(s) failed", failed)
 		}
 		return nil
 	},
@@ -540,20 +567,20 @@ func init() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-func loadOptionalConfig(cfgFile, sceneName string) (*config.Config, string) {
+func loadOptionalConfig(cfgFile, sceneName string) (*config.Config, string, error) {
 	cfg := &config.Config{}
 	configDir := "."
 	if _, err := os.Stat(cfgFile); err == nil {
 		loaded, err := config.Load(cfgFile)
 		if err != nil {
-			fatalf("load config: %v", err)
+			return nil, "", fmt.Errorf("load config: %w", err)
 		}
 		cfg = loaded
 		configDir = filepath.Dir(cfgFile)
 	} else if sceneName != "" {
-		fatalf("--scene requires a config file (%s not found)", cfgFile)
+		return nil, "", fmt.Errorf("--scene requires a config file (%s not found)", cfgFile)
 	}
-	return cfg, configDir
+	return cfg, configDir, nil
 }
 
 func resolveStyle(flagVal string, noStyleFlag bool, cfg *config.Config, configDir string) string {
@@ -622,9 +649,4 @@ func parsePageSpec(spec string) ([]int, error) {
 		}
 	}
 	return pages, nil
-}
-
-func fatalf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "panelgen: "+format+"\n", args...)
-	os.Exit(1)
 }

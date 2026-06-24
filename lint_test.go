@@ -178,7 +178,10 @@ func TestLintConfig_PanelBlankSkipsPromptCheck(t *testing.T) {
 
 func TestFilterPanelsByPage_NoFilter(t *testing.T) {
 	panels := []config.Panel{{Page: 1}, {Page: 2}}
-	got := filterPanelsByPage(panels, "")
+	got, err := filterPanelsByPage(panels, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 2 {
 		t.Errorf("expected 2, got %d", len(got))
 	}
@@ -186,7 +189,10 @@ func TestFilterPanelsByPage_NoFilter(t *testing.T) {
 
 func TestFilterPanelsByPage_Range(t *testing.T) {
 	panels := []config.Panel{{Page: 1}, {Page: 2}, {Page: 3}, {Page: 4}}
-	got := filterPanelsByPage(panels, "1,3-4")
+	got, err := filterPanelsByPage(panels, "1,3-4")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 3 {
 		t.Errorf("expected 3, got %d: %v", len(got), got)
 	}
