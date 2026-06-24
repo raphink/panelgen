@@ -174,7 +174,59 @@ func lintConfig(cfg *config.Config, configDir, styleFlag string, noStyle bool) [
 	lintCharacters(cfg, configDir, add)
 	lintScenes(cfg, configDir, add)
 	lintPanels(cfg, configDir, add)
+	lintContinueDeps(cfg, add)
 	return issues
+}
+
+func lintContinueDeps(cfg *config.Config, add func(string, string)) {
+	pageSet := make(map[int]bool, len(cfg.Panels))
+	contOf := make(map[int]int) // pageNum → continueFromPage
+	for _, p := range cfg.Panels {
+		pageSet[p.Page] = true
+		if p.Continue > 0 {
+			contOf[p.Page] = p.Continue
+		}
+	}
+
+	for page, dep := range contOf {
+		if page == dep {
+			add("error", fmt.Sprintf("panel page=%d: continue: self-reference", page))
+			continue
+		}
+		if !pageSet[dep] {
+			add("error", fmt.Sprintf("panel page=%d: continue=%d references a non-existent page", page, dep))
+		}
+	}
+
+	// Cycle detection via DFS.
+	const (
+		unvisited = 0
+		inStack   = 1
+		done      = 2
+	)
+	state := make(map[int]int, len(contOf))
+	var hasCycle func(page int) bool
+	hasCycle = func(page int) bool {
+		switch state[page] {
+		case inStack:
+			return true
+		case done:
+			return false
+		}
+		state[page] = inStack
+		if dep, ok := contOf[page]; ok {
+			if hasCycle(dep) {
+				return true
+			}
+		}
+		state[page] = done
+		return false
+	}
+	for page := range contOf {
+		if state[page] == unvisited && hasCycle(page) {
+			add("error", fmt.Sprintf("panel page=%d: continue: references form a cycle", page))
+		}
+	}
 }
 
 func lintDefaults(cfg *config.Config, add func(string, string)) {

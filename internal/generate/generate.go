@@ -288,16 +288,17 @@ type BatchOptions struct {
 }
 
 type workItem struct {
-	index   int
-	total   int
-	pageNum int
-	scene   string
-	prompt  string
-	output  string
-	size    string
-	quality string
-	refs    []string
-	prefix  string
+	index            int
+	total            int
+	pageNum          int
+	scene            string
+	prompt           string
+	output           string
+	size             string
+	quality          string
+	refs             []string
+	prefix           string
+	continueFromPage int // resolved lazily at generation time
 }
 
 func Batch(client *api.Client, opts BatchOptions) error {
@@ -337,7 +338,7 @@ func Batch(client *api.Client, opts BatchOptions) error {
 		parallel = 1
 	}
 
-	generated, failed := runWorkList(client, work, opts.StyleFile, parallel)
+	generated, failed := runWorkList(client, work, opts.StyleFile, outputDir, parallel)
 
 	fmt.Fprintf(os.Stderr, "\nDone: %d generated, %d skipped, %d failed (of %d panels)\n",
 		generated, skipped, failed, total)
@@ -365,10 +366,32 @@ func generateOne(client *api.Client, item workItem, styleFile string) error {
 	return os.WriteFile(item.output, imgData, 0644)
 }
 
-func runWorkList(client *api.Client, work []workItem, styleFile string, parallel int) (generated, failed int) {
+func runWorkList(client *api.Client, work []workItem, styleFile, outputDir string, parallel int) (generated, failed int) {
+	// One channel per page; closed when that page finishes (success or failure).
+	pageDone := make(map[int]chan struct{}, len(work))
+	for _, item := range work {
+		pageDone[item.pageNum] = make(chan struct{})
+	}
+
 	var mu sync.Mutex
 
 	runOne := func(item workItem) {
+		done := pageDone[item.pageNum]
+		defer close(done)
+
+		// Wait for continue dependency, then resolve the ref.
+		if item.continueFromPage > 0 {
+			if depDone, ok := pageDone[item.continueFromPage]; ok {
+				<-depDone
+			}
+			if img := BestPageImage(outputDir, item.continueFromPage); img != "" {
+				item.refs = append(item.refs, img)
+			} else {
+				fmt.Fprintf(os.Stderr, "[%d/%d] Page %d: continue=%d but no image found for that page\n",
+					item.index, item.total, item.pageNum, item.continueFromPage)
+			}
+		}
+
 		fmt.Fprintf(os.Stderr, "[%d/%d] Page %d (%s): generating...\n",
 			item.index, item.total, item.pageNum, item.scene)
 		if err := generateOne(client, item, styleFile); err != nil {
@@ -441,14 +464,6 @@ func buildWorkList(panels []config.Panel, cfg *config.Config, opts BatchOptions,
 
 		var panelRefs []string
 		panelRefs = append(panelRefs, panelCharRefs...)
-		if panel.Continue > 0 {
-			if img := BestPageImage(outputDir, panel.Continue); img != "" {
-				panelRefs = append(panelRefs, img)
-			} else {
-				fmt.Fprintf(os.Stderr, "[%d/%d] Page %d: continue=%d but no image found for that page\n",
-					idx, total, panel.Page, panel.Continue)
-			}
-		}
 		for _, r := range panel.Refs {
 			path := r
 			if !filepath.IsAbs(path) {
@@ -474,16 +489,17 @@ func buildWorkList(panels []config.Panel, cfg *config.Config, opts BatchOptions,
 		}
 
 		work = append(work, workItem{
-			index:   idx,
-			total:   total,
-			pageNum: panel.Page,
-			scene:   panel.Scene,
-			prompt:  prompt,
-			output:  output,
-			size:    size,
-			quality: quality,
-			refs:    allRefs,
-			prefix:  prefix,
+			index:            idx,
+			total:            total,
+			pageNum:          panel.Page,
+			scene:            panel.Scene,
+			prompt:           prompt,
+			output:           output,
+			size:             size,
+			quality:          quality,
+			refs:             allRefs,
+			prefix:           prefix,
+			continueFromPage: panel.Continue,
 		})
 	}
 	return work, skipped

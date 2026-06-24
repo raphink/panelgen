@@ -15,7 +15,7 @@ characters:
   sidekick:
     prompt: "Small helper robot with a single blue lens"
     refs:
-      - refs/robot-sidekick.png
+      - refs/clockwork-fox.png
 
 scenes:
   bridge:

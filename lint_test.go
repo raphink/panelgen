@@ -240,3 +240,62 @@ func containsStr(s, sub string) bool {
 	}
 	return false
 }
+
+// ─── lintContinueDeps ────────────────────────────────────────────────────────
+
+func TestLintContinue_SelfReference(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.Panels = []config.Panel{
+		{Page: 1, Prompt: "p", Continue: 1},
+	}
+	var issues []lintIssue
+	lintContinueDeps(cfg, func(l, m string) { issues = append(issues, lintIssue{l, m}) })
+	assertIssue(t, issues, "error", "self-reference")
+}
+
+func TestLintContinue_NonExistentPage(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.Panels = []config.Panel{
+		{Page: 2, Prompt: "p", Continue: 99},
+	}
+	var issues []lintIssue
+	lintContinueDeps(cfg, func(l, m string) { issues = append(issues, lintIssue{l, m}) })
+	assertIssue(t, issues, "error", "non-existent page")
+}
+
+func TestLintContinue_DirectCycle(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.Panels = []config.Panel{
+		{Page: 1, Prompt: "p", Continue: 2},
+		{Page: 2, Prompt: "p", Continue: 1},
+	}
+	var issues []lintIssue
+	lintContinueDeps(cfg, func(l, m string) { issues = append(issues, lintIssue{l, m}) })
+	assertIssue(t, issues, "error", "cycle")
+}
+
+func TestLintContinue_LongerCycle(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.Panels = []config.Panel{
+		{Page: 1, Prompt: "p", Continue: 3},
+		{Page: 2, Prompt: "p", Continue: 1},
+		{Page: 3, Prompt: "p", Continue: 2},
+	}
+	var issues []lintIssue
+	lintContinueDeps(cfg, func(l, m string) { issues = append(issues, lintIssue{l, m}) })
+	assertIssue(t, issues, "error", "cycle")
+}
+
+func TestLintContinue_ValidChain(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.Panels = []config.Panel{
+		{Page: 1, Prompt: "p"},
+		{Page: 2, Prompt: "p", Continue: 1},
+		{Page: 3, Prompt: "p", Continue: 2},
+	}
+	var issues []lintIssue
+	lintContinueDeps(cfg, func(l, m string) { issues = append(issues, lintIssue{l, m}) })
+	if len(issues) != 0 {
+		t.Errorf("expected no issues, got: %v", issues)
+	}
+}
