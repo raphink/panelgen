@@ -13,6 +13,7 @@ import (
 	"github.com/raphink/panelgen/internal/api"
 	"github.com/raphink/panelgen/internal/config"
 	"github.com/raphink/panelgen/internal/generate"
+	"github.com/raphink/panelgen/internal/ui"
 )
 
 const defaultConfig = "panelgen.yml"
@@ -270,7 +271,12 @@ No API calls are made.`,
 			planned, skipped, invalid = printPlanResult(result, panel, i+1, total, planShowRefs, planShowPrompt, planned, skipped, invalid)
 		}
 
-		fmt.Fprintf(os.Stdout, "\nPlan summary: %d planned, %d skipped, %d invalid (of %d)\n", planned, skipped, invalid, total)
+		fmt.Fprintf(os.Stdout, "\n%s %s%s%s%s%s%s\n",
+			ui.IconPlan,
+			ui.BoldCyan(fmt.Sprintf("%d planned", planned)), ui.Sep(),
+			ui.Yellow(fmt.Sprintf("%d skipped", skipped)), ui.Sep(),
+			ui.BoldRed(fmt.Sprintf("%d invalid", invalid)),
+			ui.Dim(fmt.Sprintf(" (of %d)", total)))
 		if invalid > 0 {
 			os.Exit(1)
 		}
@@ -301,15 +307,22 @@ var lintCmd = &cobra.Command{
 
 		errors, warnings := 0, 0
 		for _, i := range issues {
-			fmt.Fprintf(os.Stderr, "%s: %s\n", strings.ToUpper(i.level), i.msg)
 			if i.level == "error" {
+				fmt.Fprintf(os.Stderr, "%s %s\n", ui.IconFail, ui.Red(i.msg))
 				errors++
 			} else {
+				fmt.Fprintf(os.Stderr, "%s %s\n", ui.IconWarn, ui.Yellow(i.msg))
 				warnings++
 			}
 		}
 
-		fmt.Fprintf(os.Stderr, "\nLint summary: %d error(s), %d warning(s)\n", errors, warnings)
+		if errors == 0 && warnings == 0 {
+			fmt.Fprintf(os.Stderr, "%s No issues found\n", ui.IconOK)
+		} else {
+			fmt.Fprintf(os.Stderr, "\n%s%s%s\n",
+				ui.BoldRed(fmt.Sprintf("%d error(s)", errors)), ui.Sep(),
+				ui.BoldYellow(fmt.Sprintf("%d warning(s)", warnings)))
+		}
 		if errors > 0 || (lintStrict && warnings > 0) {
 			os.Exit(1)
 		}
@@ -340,16 +353,16 @@ var scenesCmd = &cobra.Command{
 		for name, scene := range cfg.Scenes {
 			chars := strings.Join(scene.Characters, ", ")
 			if chars == "" {
-				chars = "—"
+				chars = ui.Dim("—")
 			}
 			sz := firstNonEmpty(scene.Size, cfg.Defaults.Size)
 			q := firstNonEmpty(scene.Quality, cfg.Defaults.Quality)
-			fmt.Printf("  %s\n", name)
+			fmt.Printf("%s %s\n", ui.IconScene, ui.Bold(name))
 			if scene.Description != "" {
-				fmt.Printf("    %s\n", scene.Description)
+				fmt.Printf("  %s %s\n", ui.Dim("desc      "), scene.Description)
 			}
-			fmt.Printf("    characters : %s\n", chars)
-			fmt.Printf("    size       : %s  quality: %s\n\n", sz, q)
+			fmt.Printf("  %s %s\n", ui.Dim("characters"), chars)
+			fmt.Printf("  %s %s%s%s\n\n", ui.Dim("size      "), sz, ui.Sep(), q)
 		}
 		return nil
 	},
@@ -378,7 +391,8 @@ var charactersListCmd = &cobra.Command{
 		cfg, _ := mustLoadConfig(configFile)
 		for _, name := range sortedCharacterNames(cfg) {
 			char := cfg.Characters[name]
-			fmt.Printf("%-20s %s\n", name, char.Prompt)
+			refs := ui.Dim(fmt.Sprintf("(%d ref(s))", len(char.Refs)))
+			fmt.Printf("%s %-22s %s %s\n", ui.IconChar, ui.Bold(name), refs, char.Prompt)
 		}
 		return nil
 	},
@@ -447,7 +461,7 @@ Output: <characters_dir>/<name>-<N>.png`,
 		for _, name := range names {
 			char := cfg.Characters[name]
 			if char.Prompt == "" {
-				fmt.Fprintf(os.Stderr, "  %s: skipping (no prompt)\n", name)
+				fmt.Fprintf(os.Stderr, "%s %s%sno prompt\n", ui.IconSkip, ui.Bold(name), ui.Sep())
 				continue
 			}
 
@@ -465,29 +479,33 @@ Output: <characters_dir>/<name>-<N>.png`,
 			if charsGenShowPrompt {
 				prompt, err := generate.BuildPrompt(char.Prompt, resolvedStyle, preprompt)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "  %s: build prompt error: %v\n", name, err)
+					fmt.Fprintf(os.Stderr, "%s %s%sbuild prompt: %v\n", ui.IconFail, ui.Bold(name), ui.Sep(), err)
 					failed++
 					continue
 				}
-				fmt.Printf("=== %s ===\n", name)
-				fmt.Printf("size   : %s\nquality: %s\n", finalSize, finalQuality)
+				fmt.Printf("%s %s%s%s%s%s\n",
+					ui.IconChar, ui.Bold(name), ui.Sep(),
+					finalSize, ui.Sep(), finalQuality)
 				if len(refs) == 0 {
-					fmt.Println("refs   : (none)")
+					fmt.Printf("  %s %s\n", ui.Dim("refs  "), ui.Dim("(none)"))
 				} else {
-					fmt.Println("refs   :")
+					fmt.Printf("  %s\n", ui.Dim("refs  "))
 					for _, r := range refs {
-						fmt.Printf("  - %s\n", r)
+						fmt.Printf("    %s %s\n", ui.Dim("·"), r)
 					}
 				}
-				fmt.Printf("prompt :\n")
+				fmt.Printf("  %s\n", ui.Dim("prompt"))
 				for _, line := range strings.Split(prompt, "\n") {
-					fmt.Printf("  %s\n", line)
+					fmt.Printf("    %s\n", ui.Dim(line))
 				}
 				fmt.Println()
 				continue
 			}
 
 			output := nextCharacterVersion(resolvedOutput, name)
+			fmt.Fprintf(os.Stderr, "%s Generating%s%s%s%s%s%s\n",
+				ui.IconChar, ui.Sep(), ui.Bold(name), ui.Sep(),
+				finalSize, ui.Sep(), finalQuality)
 			if err := generate.Run(client, generate.Options{
 				Prompt:      char.Prompt,
 				StyleFile:   resolvedStyle,
@@ -497,7 +515,7 @@ Output: <characters_dir>/<name>-<N>.png`,
 				Size:        finalSize,
 				Quality:     finalQuality,
 			}); err != nil {
-				fmt.Fprintf(os.Stderr, "  %s FAILED: %v\n", name, err)
+				fmt.Fprintf(os.Stderr, "  %s %s%s%v\n", ui.IconFail, ui.Bold(name), ui.Sep(), err)
 				failed++
 			}
 		}
@@ -551,7 +569,7 @@ func resolveStyle(flagVal string, noStyleFlag bool, cfg *config.Config, configDi
 		candidate = filepath.Join(configDir, candidate)
 	}
 	if _, err := os.Stat(candidate); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: style file not found: %s, proceeding without style\n", candidate)
+		fmt.Fprintf(os.Stderr, "%s style file not found: %s%sproceeding without style\n", ui.IconWarn, candidate, ui.Sep())
 		return ""
 	}
 	return candidate

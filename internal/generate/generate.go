@@ -10,9 +10,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/raphink/panelgen/internal/api"
 	"github.com/raphink/panelgen/internal/config"
+	"github.com/raphink/panelgen/internal/ui"
 )
 
 // ─── Prompt building ──────────────────────────────────────────────────────────
@@ -250,13 +252,18 @@ func Run(client *api.Client, opts Options) error {
 		return err
 	}
 
+	spec := ui.Dim(opts.Size+ui.Sep()+opts.Quality)
 	var imgData []byte
+	start := time.Now()
 	if len(opts.Refs) > 0 {
-		fmt.Fprintf(os.Stderr, "Editing with %d reference(s): %s (%s, %s)\n",
-			len(opts.Refs), opts.Output, opts.Size, opts.Quality)
+		fmt.Fprintf(os.Stderr, "%s Editing%s%s%s%s\n",
+			ui.IconGen,
+			ui.Sep(), ui.Bold(opts.Output),
+			ui.Sep(), spec+ui.Dim(fmt.Sprintf(" (%d ref(s))", len(opts.Refs))))
 		imgData, err = client.Edit(fullPrompt, opts.Refs, opts.Size, opts.Quality)
 	} else {
-		fmt.Fprintf(os.Stderr, "Generating: %s (%s, %s)\n", opts.Output, opts.Size, opts.Quality)
+		fmt.Fprintf(os.Stderr, "%s Generating%s%s%s%s\n",
+			ui.IconGen, ui.Sep(), ui.Bold(opts.Output), ui.Sep(), spec)
 		imgData, err = client.Generate(fullPrompt, opts.Size, opts.Quality)
 	}
 	if err != nil {
@@ -269,7 +276,8 @@ func Run(client *api.Client, opts Options) error {
 	if err := os.WriteFile(opts.Output, imgData, 0644); err != nil {
 		return fmt.Errorf("write output: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "Saved: %s\n", opts.Output)
+	fmt.Fprintf(os.Stderr, "%s Saved%s%s%s\n",
+		ui.IconOK, ui.Sep(), opts.Output, ui.Dim(" ("+ui.Dur(time.Since(start))+")"))
 	return nil
 }
 
@@ -324,12 +332,15 @@ func Batch(client *api.Client, opts BatchOptions) error {
 	work, skipped := buildWorkList(panels, cfg, opts, outputDir)
 
 	if opts.DryRun {
-		fmt.Fprintf(os.Stderr, "\nDry run: %d would be generated, %d skipped (of %d)\n",
-			len(work), skipped, total)
+		fmt.Fprintf(os.Stderr, "\n%s Dry run%s%s would generate%s%d skipped%s(of %d)\n",
+			ui.IconDry, ui.Sep(),
+			ui.BoldCyan(fmt.Sprintf("%d", len(work))), ui.Sep(),
+			skipped, ui.Sep(), total)
 		return nil
 	}
 	if len(work) == 0 {
-		fmt.Fprintf(os.Stderr, "\nDone: 0 generated, %d skipped, 0 failed (of %d)\n", skipped, total)
+		fmt.Fprintf(os.Stderr, "\n%s Nothing to do%s%d skipped (of %d)\n",
+			ui.IconOK, ui.Sep(), skipped, total)
 		return nil
 	}
 
@@ -340,8 +351,12 @@ func Batch(client *api.Client, opts BatchOptions) error {
 
 	generated, failed := runWorkList(client, work, opts.StyleFile, outputDir, parallel)
 
-	fmt.Fprintf(os.Stderr, "\nDone: %d generated, %d skipped, %d failed (of %d panels)\n",
-		generated, skipped, failed, total)
+	fmt.Fprintf(os.Stderr, "\n%s %s%s%s%s%s%s\n",
+		ui.IconOK,
+		ui.BoldGreen(fmt.Sprintf("%d generated", generated)), ui.Sep(),
+		ui.Yellow(fmt.Sprintf("%d skipped", skipped)), ui.Sep(),
+		ui.BoldRed(fmt.Sprintf("%d failed", failed)),
+		ui.Dim(fmt.Sprintf(" (of %d panels)", total)))
 
 	if failed > 0 {
 		return fmt.Errorf("%d panel(s) failed", failed)
@@ -387,22 +402,38 @@ func runWorkList(client *api.Client, work []workItem, styleFile, outputDir strin
 			if img := BestPageImage(outputDir, item.continueFromPage); img != "" {
 				item.refs = append(item.refs, img)
 			} else {
-				fmt.Fprintf(os.Stderr, "[%d/%d] Page %d: continue=%d but no image found for that page\n",
-					item.index, item.total, item.pageNum, item.continueFromPage)
+				fmt.Fprintf(os.Stderr, "%s %s %s continue=%d%sno image found for that page\n",
+					fmtIdx(item.index, item.total), ui.IconWarn,
+					ui.Bold(fmt.Sprintf("Page %d", item.pageNum)),
+					item.continueFromPage, ui.Sep())
 			}
 		}
 
-		fmt.Fprintf(os.Stderr, "[%d/%d] Page %d (%s): generating...\n",
-			item.index, item.total, item.pageNum, item.scene)
+		scene := ""
+		if item.scene != "" {
+			scene = ui.Sep() + ui.Dim(item.scene)
+		}
+		refs := ""
+		if len(item.refs) > 0 {
+			refs = ui.Dim(fmt.Sprintf(" (%d ref(s))", len(item.refs)))
+		}
+		fmt.Fprintf(os.Stderr, "%s %s %s%s%s\n",
+			fmtIdx(item.index, item.total), ui.IconGen,
+			ui.Bold(fmt.Sprintf("Page %d", item.pageNum)),
+			scene, refs)
+
+		start := time.Now()
 		if err := generateOne(client, item, styleFile); err != nil {
 			mu.Lock()
-			fmt.Fprintf(os.Stderr, "  Page %d FAILED: %v\n", item.pageNum, err)
+			fmt.Fprintf(os.Stderr, "  %s %s\n", ui.BoldRed("FAILED"), ui.Dim(err.Error()))
 			failed++
 			mu.Unlock()
 			return
 		}
 		mu.Lock()
-		fmt.Fprintf(os.Stderr, "  Saved: %s\n", item.output)
+		fmt.Fprintf(os.Stderr, "  %s Saved%s%s%s\n",
+			ui.IconOK, ui.Sep(), item.output,
+			ui.Dim(" ("+ui.Dur(time.Since(start))+")"))
 		generated++
 		mu.Unlock()
 	}
@@ -438,7 +469,9 @@ func buildWorkList(panels []config.Panel, cfg *config.Config, opts BatchOptions,
 		idx := i + 1
 		prompt := strings.TrimSpace(panel.Prompt)
 		if prompt == "" || panel.Scene == "blank" {
-			fmt.Fprintf(os.Stderr, "[%d/%d] Page %d: skipping (blank)\n", idx, total, panel.Page)
+			fmt.Fprintf(os.Stderr, "%s %s %s%sblank\n",
+				fmtIdx(idx, total), ui.IconSkip,
+				ui.Bold(fmt.Sprintf("Page %d", panel.Page)), ui.Sep())
 			skipped++
 			continue
 		}
@@ -474,8 +507,10 @@ func buildWorkList(panels []config.Panel, cfg *config.Config, opts BatchOptions,
 		allRefs := append(sceneRefs, panelRefs...)
 
 		if HasVersion(outputDir, panel.Page, quality) && !opts.Force {
-			fmt.Fprintf(os.Stderr, "[%d/%d] Page %d: %s version exists, skipping (--force for new increment)\n",
-				idx, total, panel.Page, quality)
+			fmt.Fprintf(os.Stderr, "%s %s %s%s%s version exists\n",
+				fmtIdx(idx, total), ui.IconSkip,
+				ui.Bold(fmt.Sprintf("Page %d", panel.Page)), ui.Sep(),
+				quality)
 			skipped++
 			continue
 		}
@@ -483,8 +518,10 @@ func buildWorkList(panels []config.Panel, cfg *config.Config, opts BatchOptions,
 		output := NextVersion(outputDir, panel.Page, quality)
 
 		if opts.DryRun {
-			fmt.Fprintf(os.Stderr, "[%d/%d] Page %d (%s): would generate %s (%s, %s)\n",
-				idx, total, panel.Page, panel.Scene, filepath.Base(output), size, quality)
+			fmt.Fprintf(os.Stderr, "%s %s %s%s%s\n",
+				fmtIdx(idx, total), ui.IconDry,
+				ui.Bold(fmt.Sprintf("Page %d", panel.Page)), ui.Sep(),
+				ui.Dim(filepath.Base(output)+" · "+size+" · "+quality))
 			continue
 		}
 
@@ -505,13 +542,20 @@ func buildWorkList(panels []config.Panel, cfg *config.Config, opts BatchOptions,
 	return work, skipped
 }
 
+func fmtIdx(idx, total int) string {
+	w := fmt.Sprintf("%d", total)
+	return ui.Dim(fmt.Sprintf("[%*d/%s]", len(w), idx, w))
+}
+
 func resolvePanel(cfg *config.Config, opts BatchOptions, panel config.Panel, idx, total int) (prefix string, refs []string, size, quality string, skip bool) {
 	if panel.Scene == "" {
 		return "", nil, "", "", false
 	}
 	resolved, err := ResolveScene(cfg, panel.Scene, opts.ConfigDir, panel.Vars)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[%d/%d] Page %d: %v — skipping\n", idx, total, panel.Page, err)
+		fmt.Fprintf(os.Stderr, "%s %s %s%s%v\n",
+			fmtIdx(idx, total), ui.IconFail,
+			ui.Bold(fmt.Sprintf("Page %d", panel.Page)), ui.Sep(), err)
 		return "", nil, "", "", true
 	}
 	return resolved.Prefix, resolved.Refs, resolved.Size, resolved.Quality, false

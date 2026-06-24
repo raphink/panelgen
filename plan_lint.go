@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/raphink/panelgen/internal/config"
+	"github.com/raphink/panelgen/internal/ui"
 	"github.com/raphink/panelgen/internal/generate"
 )
 
@@ -53,30 +54,45 @@ func filterPanelsByPage(panels []config.Panel, pagesFlag string) []config.Panel 
 	return filtered
 }
 
+func planIdx(idx, total int) string {
+	w := fmt.Sprintf("%d", total)
+	return ui.Dim(fmt.Sprintf("[%*d/%s]", len(w), idx, w))
+}
+
 func printPlanResult(result panelPlanResult, panel config.Panel, idx, total int, showRefs, showPrompt bool, planned, skipped, invalid int) (int, int, int) {
+	pageLabel := ui.Bold(fmt.Sprintf("Page %d", panel.Page))
+	scene := ""
+	if panel.Scene != "" {
+		scene = ui.Sep() + ui.Dim(panel.Scene)
+	}
 	switch result.status {
 	case "skip":
-		fmt.Fprintf(os.Stdout, "[%d/%d] page=%d scene=%s status=skip (%s)\n", idx, total, panel.Page, panel.Scene, result.reason)
+		fmt.Fprintf(os.Stdout, "%s %s %s%s%s\n",
+			planIdx(idx, total), ui.IconSkip, pageLabel, scene, ui.Dim(" — "+result.reason))
 		skipped++
 	case "invalid":
-		fmt.Fprintf(os.Stdout, "[%d/%d] page=%d scene=%s status=invalid (%v)\n", idx, total, panel.Page, panel.Scene, result.err)
+		fmt.Fprintf(os.Stdout, "%s %s %s%s%s\n",
+			planIdx(idx, total), ui.IconFail, pageLabel, scene, ui.Dim(fmt.Sprintf(" — %v", result.err)))
 		invalid++
 	case "plan":
-		fmt.Fprintf(os.Stdout, "[%d/%d] page=%d scene=%s status=plan\n", idx, total, panel.Page, panel.Scene)
-		fmt.Fprintf(os.Stdout, "  output : %s\n  size   : %s\n  quality: %s\n",
-			result.output, result.size, result.quality)
+		fmt.Fprintf(os.Stdout, "%s %s %s%s\n",
+			planIdx(idx, total), ui.IconPlan, pageLabel, scene)
+		fmt.Fprintf(os.Stdout, "  %s %s\n",
+			ui.Dim("output "), result.output)
+		fmt.Fprintf(os.Stdout, "  %s %s%s%s\n",
+			ui.Dim("size   "), result.size, ui.Sep(), result.quality)
 		if len(result.refs) == 0 {
-			fmt.Fprintln(os.Stdout, "  refs   : (none)")
+			fmt.Fprintf(os.Stdout, "  %s %s\n", ui.Dim("refs   "), ui.Dim("(none)"))
 		} else {
-			fmt.Fprintln(os.Stdout, "  refs   :")
+			fmt.Fprintf(os.Stdout, "  %s\n", ui.Dim("refs   "))
 			for _, r := range result.refs {
-				fmt.Fprintf(os.Stdout, "    - %s\n", r)
+				fmt.Fprintf(os.Stdout, "    %s %s\n", ui.Dim("·"), r)
 			}
 		}
 		if showPrompt {
-			fmt.Fprintln(os.Stdout, "  prompt:")
+			fmt.Fprintf(os.Stdout, "  %s\n", ui.Dim("prompt "))
 			for _, line := range strings.Split(result.prompt, "\n") {
-				fmt.Fprintf(os.Stdout, "    %s\n", line)
+				fmt.Fprintf(os.Stdout, "    %s\n", ui.Dim(line))
 			}
 		}
 		planned++
