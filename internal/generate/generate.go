@@ -294,6 +294,7 @@ type BatchOptions struct {
 	Size      string // overrides config/scene
 	Quality   string // overrides config/scene
 	Parallel  int
+	OutputDir string // overrides config output_dir when set
 }
 
 type workItem struct {
@@ -324,7 +325,10 @@ func Batch(client *api.Client, opts BatchOptions) error {
 		}
 	}
 
-	outputDir := filepath.Join(opts.ConfigDir, cfg.OutputDir)
+	outputDir := opts.OutputDir
+	if outputDir == "" {
+		outputDir = filepath.Join(opts.ConfigDir, cfg.OutputDir)
+	}
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("create output dir: %w", err)
 	}

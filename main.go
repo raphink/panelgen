@@ -155,13 +155,14 @@ func init() {
 // ─── batch ────────────────────────────────────────────────────────────────────
 
 var (
-	batchSize     string
-	batchQuality  string
-	batchPages    string
-	batchForce    bool
-	batchDryRun   bool
-	batchParallel int
-	batchAssemble bool
+	batchSize      string
+	batchQuality   string
+	batchPages     string
+	batchForce     bool
+	batchDryRun    bool
+	batchParallel  int
+	batchAssemble  bool
+	batchOutputDir string
 )
 
 var batchCmd = &cobra.Command{
@@ -207,6 +208,7 @@ Idempotent: skips panels that already have output at the requested quality.`,
 			Size:      batchSize,
 			Quality:   batchQuality,
 			Parallel:  batchParallel,
+			OutputDir: batchOutputDir,
 		}); err != nil {
 			fatalf("%v", err)
 		}
@@ -226,6 +228,7 @@ func init() {
 	batchCmd.Flags().BoolVar(&batchDryRun, "dry-run", false, "Show what would be generated without calling the API")
 	batchCmd.Flags().IntVar(&batchParallel, "parallel", 1, "Number of parallel generations")
 	batchCmd.Flags().BoolVar(&batchAssemble, "assemble", false, "Assemble PDF after generation (overrides defaults.assemble)")
+	batchCmd.Flags().StringVar(&batchOutputDir, "output-dir", "", "Override output directory (default: output_dir from config)")
 }
 
 // ─── plan ─────────────────────────────────────────────────────────────────────
